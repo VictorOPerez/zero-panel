@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:api.anthropic.com)",
+      "Bash(gunzip -c \"C:/Users/vikto/.claude/projects/C--Users-vikto-OneDrive-Desktop-proyectos-personales-1260315022709-zero-Zero-Dashboard-zero-panel/02f0a772-fb7c-4b47-8a24-6d7588c6bf31/tool-results/webfetch-1776642600076-v5c5al.bin\")",
+      "Read(//tmp/**)",
+      "Bash(npm install *)",
+      "Bash(npx shadcn@latest init --yes --base-color neutral --css-variables)",
+      "Bash(npx shadcn@latest init -d)"
+    ]
+  }
+}
