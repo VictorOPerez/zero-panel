@@ -343,6 +343,25 @@
   .persona-day-row-times { flex-basis: 100%; }
 }
 
+/* ── Rich plan card (/billing) — mismo patrón que el modal ── */
+.rich-plan-card {
+  border-radius: 12px;
+}
+.rich-plan-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  min-height: 320px;
+}
+@media (max-width: 720px) {
+  .rich-plan-grid {
+    grid-template-columns: 1fr;
+  }
+  .rich-plan-grid > :last-child {
+    border-left: none !important;
+    border-top: 1px solid var(--hair);
+  }
+}
+
 /* ── Plans modal v2 (layout 2 columnas desktop, stack en mobile) ── */
 .plans-modal-panel-v2 {
   position: relative;

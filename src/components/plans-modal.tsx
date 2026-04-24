@@ -5,37 +5,12 @@ import { useQuery } from "@tanstack/react-query";
 import { listPlans } from "@/lib/api/billing";
 import { useAuthStore } from "@/store/auth";
 import { useBillingActions } from "@/lib/hooks/use-billing-actions";
-import type { BillingPlan } from "@/lib/api/contract";
+import { resolvePlanDisplay } from "@/lib/billing/default-plan";
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
-
-// Plan por defecto que mostramos siempre: si el backend no tiene planes
-// configurados aún, el cliente igual ve una propuesta concreta, no un modal
-// vacío. Es **informativo** — el botón "Elegir plan" queda deshabilitado con
-// nota "próximamente" hasta que el backend exponga el price_id real.
-const FALLBACK_PLAN: Required<
-  Pick<BillingPlan, "id" | "name" | "price_id" | "monthly_price_usd" | "token_limit">
-> & { description: string; features: string[] } = {
-  id: "basico",
-  name: "Básico",
-  price_id: "",
-  monthly_price_usd: 59,
-  token_limit: 3_000_000,
-  description: "Automatizá tu atención 24/7 y multiplicá las reservas.",
-  features: [
-    "Bot IA 24/7 que reserva turnos solo en tu Google Calendar",
-    "Intervención humana directa: respondé desde tu WhatsApp y el bot se auto-pausa",
-    "Bilingüe automático (ES / EN) — detecta el idioma del cliente",
-    "Panel completo: inbox, reservas, solicitudes, persona del bot",
-    "Catálogo de servicios propio (el bot sabe qué ofrecés y cuánto dura)",
-    "Alertas al instante cuando el bot necesita que intervengas",
-    "Soporte por email con respuesta el mismo día hábil",
-    "Sin permanencia — cancelás cuando quieras",
-  ],
-};
 
 const HIGHLIGHT_FEATURES = [
   { label: "Tu bot responde 24/7", hint: "incluso mientras dormís" },
@@ -58,16 +33,9 @@ export function PlansModal({ open, onClose }: Props) {
   if (!open) return null;
 
   const backendPlans = plansQuery.data?.plans ?? [];
-  // Por ahora el panel vende un único plan. Si el backend lo expone (con
-  // price_id real), usamos ese. Si no, mostramos la ficha informativa.
   const plan = backendPlans[0];
-  const display = plan ?? FALLBACK_PLAN;
-  const features =
-    plan?.features && plan.features.length > 0 ? plan.features : FALLBACK_PLAN.features;
-  const description = plan?.description ?? FALLBACK_PLAN.description;
-  const priceUsd = plan?.monthly_price_usd ?? FALLBACK_PLAN.monthly_price_usd;
-  const tokenLimit = plan?.token_limit ?? FALLBACK_PLAN.token_limit;
-  const canCheckout = !!plan?.price_id;
+  const display = resolvePlanDisplay(plan);
+  const { name, description, features, monthly_price_usd: priceUsd, token_limit: tokenLimit, canCheckout } = display;
 
   const checkoutInFlight = busy === "checkout" && checkoutVariables === plan?.price_id;
 
@@ -283,7 +251,7 @@ export function PlansModal({ open, onClose }: Props) {
                         lineHeight: 1.1,
                       }}
                     >
-                      {display.name}
+                      {name}
                     </div>
                   </div>
                 </div>

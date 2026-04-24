@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { ExternalLink, Loader2, X } from "lucide-react";
+import { Check, ExternalLink, Loader2, X, Zap } from "lucide-react";
 import {
   cancelSubscription,
   getTenantBilling,
@@ -18,6 +18,7 @@ import {
   BillingStatusSkeleton,
 } from "@/components/billing/billing-status";
 import { useBillingActions } from "@/lib/hooks/use-billing-actions";
+import { resolvePlanDisplay } from "@/lib/billing/default-plan";
 import type { BillingPlan } from "@/lib/api/contract";
 
 export function BillingView() {
@@ -221,29 +222,36 @@ function Billing({ tenantId }: { tenantId: string }) {
       >
         Planes disponibles
       </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
-          gap: 12,
-        }}
-      >
-        {plans.map((p) => (
-          <PlanCard
-            key={p.id}
-            plan={p}
-            current={billing?.plan === p.id || billing?.stripe_price_id === p.price_id}
-            loading={busy === "checkout" && checkoutVariables === p.price_id}
-            disabled={busy === "checkout" && checkoutVariables !== p.price_id}
-            onChoose={() => checkout(p.price_id)}
-          />
-        ))}
-        {plans.length === 0 && !plansQuery.isLoading && (
-          <div style={{ color: "var(--text-3)", fontSize: 12 }}>
-            No hay planes disponibles.
-          </div>
-        )}
-      </div>
+
+      {/* Si hay exactamente 1 plan (el Básico hoy) mostramos la ficha rica con
+          features completas. Si en el futuro hay múltiples, cae al grid. */}
+      {plans.length <= 1 ? (
+        <RichPlanCard
+          plan={plans[0]}
+          billing={billing}
+          loading={busy === "checkout"}
+          onChoose={(priceId) => checkout(priceId)}
+        />
+      ) : (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+            gap: 12,
+          }}
+        >
+          {plans.map((p) => (
+            <PlanCard
+              key={p.id}
+              plan={p}
+              current={billing?.plan === p.id || billing?.stripe_price_id === p.price_id}
+              loading={busy === "checkout" && checkoutVariables === p.price_id}
+              disabled={busy === "checkout" && checkoutVariables !== p.price_id}
+              onChoose={() => checkout(p.price_id)}
+            />
+          ))}
+        </div>
+      )}
 
       {billing?.stripe_subscription_id && status?.can_serve && (
         <div style={{ marginTop: 18, fontSize: 12, color: "var(--text-3)" }}>
@@ -345,6 +353,295 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
       </div>
       <div style={{ fontSize: 18, fontWeight: 600 }}>{value}</div>
       {hint && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{hint}</div>}
+    </div>
+  );
+}
+
+/**
+ * Card rica del plan — usada cuando hay 1 solo plan para vender. Muestra
+ * features completas (hardcodeadas si el backend no las trae), precio
+ * grande, CTA prominente. Mismo copy/estructura que el PlansModal pero
+ * inline en la página /billing.
+ */
+function RichPlanCard({
+  plan,
+  billing,
+  loading,
+  onChoose,
+}: {
+  plan: BillingPlan | undefined;
+  billing:
+    | { plan?: string; stripe_price_id?: string }
+    | undefined;
+  loading: boolean;
+  onChoose: (priceId: string) => void;
+}) {
+  const display = resolvePlanDisplay(plan);
+  const isCurrent =
+    !!plan &&
+    (billing?.plan === plan.id || billing?.stripe_price_id === plan.price_id);
+
+  const handleClick = () => {
+    if (!display.canCheckout || !plan?.price_id) return;
+    onChoose(plan.price_id);
+  };
+
+  return (
+    <div
+      className="glass rich-plan-card"
+      style={{
+        position: "relative",
+        padding: 0,
+        overflow: "hidden",
+        border: "1px solid oklch(0.62 0.22 295 / 0.35)",
+      }}
+    >
+      {/* Top accent */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 3,
+          background: "var(--aurora)",
+        }}
+      />
+
+      <div className="rich-plan-grid">
+        {/* Lado izquierdo: precio + CTA */}
+        <div
+          style={{
+            padding: "26px 24px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            minWidth: 0,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 8,
+                background: "var(--aurora)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#0a0a0f",
+                flexShrink: 0,
+              }}
+            >
+              <Zap size={17} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "var(--text-3)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.14em",
+                  fontWeight: 700,
+                }}
+              >
+                Plan
+              </div>
+              <div
+                style={{
+                  fontSize: 17,
+                  fontWeight: 700,
+                  color: "var(--text-0)",
+                  lineHeight: 1.1,
+                }}
+              >
+                {display.name}
+                {isCurrent && (
+                  <span
+                    style={{
+                      marginLeft: 8,
+                      fontSize: 10,
+                      padding: "2px 7px",
+                      borderRadius: 4,
+                      background: "oklch(0.70 0.18 160 / 0.16)",
+                      color: "var(--z-green)",
+                      border: "1px solid oklch(0.70 0.18 160 / 0.35)",
+                      fontFamily: "var(--font-jetbrains-mono)",
+                      fontWeight: 600,
+                      verticalAlign: "middle",
+                    }}
+                  >
+                    ACTUAL
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+            <span
+              className="aurora-text"
+              style={{
+                fontFamily: "var(--font-jetbrains-mono)",
+                fontSize: "clamp(38px, 6vw, 50px)",
+                fontWeight: 800,
+                lineHeight: 1,
+                letterSpacing: -1,
+              }}
+            >
+              ${display.monthly_price_usd}
+            </span>
+            <span style={{ fontSize: 13, color: "var(--text-3)", fontWeight: 500 }}>
+              USD / mes
+            </span>
+          </div>
+          <div
+            style={{
+              fontSize: 11.5,
+              color: "var(--text-3)",
+              fontFamily: "var(--font-jetbrains-mono)",
+              marginTop: -4,
+            }}
+          >
+            ≈ {display.token_limit.toLocaleString("en-US")} tokens · ~2.500 conversaciones/mes
+          </div>
+
+          <p
+            style={{
+              fontSize: 13,
+              color: "var(--text-2)",
+              lineHeight: 1.5,
+              margin: 0,
+            }}
+          >
+            {display.description}
+          </p>
+
+          <button
+            type="button"
+            onClick={handleClick}
+            disabled={!display.canCheckout || loading || isCurrent}
+            title={
+              isCurrent
+                ? "Ya estás suscripto a este plan"
+                : !display.canCheckout
+                  ? "Pronto vas a poder activar el plan desde acá. Mientras tanto escribinos por WhatsApp."
+                  : undefined
+            }
+            style={{
+              marginTop: 4,
+              width: "100%",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              padding: "12px 18px",
+              borderRadius: 9,
+              border: "none",
+              background:
+                isCurrent
+                  ? "rgba(255,255,255,0.04)"
+                  : display.canCheckout
+                    ? "var(--aurora)"
+                    : "rgba(255,255,255,0.06)",
+              color: isCurrent
+                ? "var(--text-2)"
+                : display.canCheckout
+                  ? "#0a0a0f"
+                  : "var(--text-3)",
+              fontSize: 13.5,
+              fontWeight: 700,
+              letterSpacing: 0.2,
+              cursor:
+                !display.canCheckout || loading || isCurrent ? "not-allowed" : "pointer",
+              boxShadow:
+                display.canCheckout && !isCurrent
+                  ? "0 6px 18px oklch(0.62 0.22 295 / 0.3)"
+                  : undefined,
+            }}
+          >
+            {loading ? (
+              <Loader2 size={14} style={{ animation: "spin 900ms linear infinite" }} />
+            ) : null}
+            {loading
+              ? "Redirigiendo…"
+              : isCurrent
+                ? "Plan actual"
+                : display.canCheckout
+                  ? "Activar plan ahora →"
+                  : "Próximamente"}
+          </button>
+
+          <div
+            style={{
+              fontSize: 11,
+              color: "var(--text-3)",
+              textAlign: "center",
+              lineHeight: 1.5,
+            }}
+          >
+            Pago seguro con Stripe · Sin permanencia · Cancelás en 1 clic
+          </div>
+        </div>
+
+        {/* Lado derecho: features completas */}
+        <div
+          style={{
+            padding: "26px 24px",
+            borderLeft: "1px solid var(--hair)",
+            background: "rgba(255,255,255,0.015)",
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: "var(--text-3)",
+              textTransform: "uppercase",
+              letterSpacing: "0.14em",
+              fontWeight: 700,
+              marginBottom: 12,
+            }}
+          >
+            Todo incluido
+          </div>
+          <ul
+            style={{
+              margin: 0,
+              padding: 0,
+              listStyle: "none",
+              display: "flex",
+              flexDirection: "column",
+              gap: 9,
+            }}
+          >
+            {display.features.map((f) => (
+              <li
+                key={f}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 9,
+                  fontSize: 12.5,
+                  color: "var(--text-1)",
+                  lineHeight: 1.45,
+                }}
+              >
+                <Check
+                  size={13}
+                  strokeWidth={3}
+                  style={{
+                    color: "var(--z-cyan)",
+                    flexShrink: 0,
+                    marginTop: 2,
+                  }}
+                />
+                <span>{f}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
     </div>
   );
 }
