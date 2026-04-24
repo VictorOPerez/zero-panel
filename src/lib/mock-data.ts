@@ -1,0 +1,228 @@
+/**
+ * Mock data for development — mirrors the design prototype data.
+ * Remove once the real API is wired.
+ */
+
+import type { Conversation, Message, Integration, Analytics, AgentConfig } from "./api/types";
+
+export const MOCK_CONVERSATIONS: Conversation[] = [
+  {
+    id: "1",
+    contactName: "Camila Rossi",
+    contactPhone: "+54 9 351 288-4102",
+    channel: "wa",
+    status: "ia_atendiendo",
+    preview: "Hola! Quería saber si todavía tienen el modelo en talle M...",
+    unreadCount: 2,
+    updatedAt: new Date(Date.now() - 2 * 60_000).toISOString(),
+    lang: "ES",
+    tags: ["vip", "envío", "córdoba", "repeat"],
+  },
+  {
+    id: "2",
+    contactName: "Martín Acevedo",
+    channel: "ig",
+    status: "resuelta",
+    preview: "perfecto, mañana paso a retirar gracias",
+    unreadCount: 0,
+    updatedAt: new Date(Date.now() - 6 * 60_000).toISOString(),
+    lang: "ES",
+    tags: [],
+  },
+  {
+    id: "3",
+    contactName: "Lucía Fernández",
+    channel: "wa",
+    status: "esperando_humano",
+    preview: "El pago no se procesó, me sale error 402",
+    unreadCount: 1,
+    updatedAt: new Date(Date.now() - 11 * 60_000).toISOString(),
+    lang: "ES",
+    tags: ["pago", "error"],
+  },
+  {
+    id: "4",
+    contactName: "Jonás M.",
+    channel: "tg",
+    status: "ia_atendiendo",
+    preview: "cuando abren mañana?",
+    unreadCount: 0,
+    updatedAt: new Date(Date.now() - 24 * 60_000).toISOString(),
+    lang: "ES",
+    tags: [],
+  },
+  {
+    id: "5",
+    contactName: "Belén D'Angelo",
+    channel: "em",
+    status: "humano_atendiendo",
+    preview: "Adjunto comprobante — necesito factura A",
+    unreadCount: 0,
+    updatedAt: new Date(Date.now() - 60 * 60_000).toISOString(),
+    lang: "ES",
+    tags: ["factura"],
+  },
+  {
+    id: "6",
+    contactName: "Federico Paz",
+    channel: "web",
+    status: "ia_atendiendo",
+    preview: "Quiero agendar visita al showroom",
+    unreadCount: 0,
+    updatedAt: new Date(Date.now() - 90 * 60_000).toISOString(),
+    lang: "ES",
+    tags: [],
+  },
+  {
+    id: "7",
+    contactName: "Agustina Lema",
+    channel: "wa",
+    status: "resuelta",
+    preview: "gracias, era eso nomás",
+    unreadCount: 0,
+    updatedAt: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+    lang: "ES",
+    tags: [],
+  },
+  {
+    id: "8",
+    contactName: "Pablo Irigoyen",
+    channel: "ig",
+    status: "ia_atendiendo",
+    preview: "hi! do you ship internationally?",
+    unreadCount: 0,
+    updatedAt: new Date(Date.now() - 3 * 60 * 60_000).toISOString(),
+    lang: "EN",
+    tags: [],
+  },
+  {
+    id: "9",
+    contactName: "Rodrigo Salas",
+    channel: "wa",
+    status: "esperando_humano",
+    preview: "no anda el link de pago",
+    unreadCount: 0,
+    updatedAt: new Date(Date.now() - 4 * 60 * 60_000).toISOString(),
+    lang: "ES",
+    tags: ["pago"],
+  },
+  {
+    id: "10",
+    contactName: "Sofía Giménez",
+    channel: "em",
+    status: "humano_atendiendo",
+    preview: "Propuesta comercial Q2",
+    unreadCount: 0,
+    updatedAt: new Date(Date.now() - 5 * 60 * 60_000).toISOString(),
+    lang: "ES",
+    tags: ["b2b"],
+  },
+];
+
+export const MOCK_MESSAGES: Message[] = [
+  {
+    id: "m1",
+    conversationId: "1",
+    from: "user",
+    text: "Hola! Quería saber si todavía tienen el modelo Aurora en talle M, color terracota.",
+    sentAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+  },
+  {
+    id: "m2",
+    conversationId: "1",
+    from: "zero",
+    text: "¡Hola Camila! Déjame revisar el stock de Aurora en terracota.",
+    sentAt: new Date(Date.now() - 29 * 60_000).toISOString(),
+  },
+  {
+    id: "m3",
+    conversationId: "1",
+    from: "zero",
+    text: "Tenemos **2 unidades** disponibles en talle M, terracota. ¿Te reservo una hasta mañana?",
+    sentAt: new Date(Date.now() - 28 * 60_000).toISOString(),
+    toolCall: { name: "check_inventory", durationMs: 240 },
+  },
+  {
+    id: "m4",
+    conversationId: "1",
+    from: "user",
+    text: "Sí por favor! Y ando averiguando si hacen envíos a Córdoba",
+    sentAt: new Date(Date.now() - 20 * 60_000).toISOString(),
+  },
+  {
+    id: "m5",
+    conversationId: "1",
+    from: "zero",
+    text: "Listo, reservada a nombre tuyo hasta el jueves 14hs. Envío a Córdoba sale **$3.200** por Andreani, llega en 48–72hs. ¿Lo sumo al pedido?",
+    sentAt: new Date(Date.now() - 15 * 60_000).toISOString(),
+    toolCall: { name: "reserve_item + shipping_quote", durationMs: 410 },
+  },
+  {
+    id: "m6",
+    conversationId: "1",
+    from: "user",
+    text: "dale perfecto",
+    sentAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+  },
+  {
+    id: "m7",
+    conversationId: "1",
+    from: "human",
+    agentName: "Vale",
+    text: "Camila hola, soy Valentina del equipo — te paso el link de pago en un toque 😊",
+    sentAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+  },
+];
+
+export const MOCK_INTEGRATIONS: Integration[] = [
+  { key: "wa", name: "WhatsApp Business", status: "connected", detail: "+54 9 11 3452-1908", syncedAt: "hace 12s" },
+  { key: "tg", name: "Telegram", status: "disconnected", detail: "No conectado" },
+];
+
+export const MOCK_ANALYTICS: Analytics = {
+  kpis: [
+    { label: "Conversaciones hoy", value: 184, delta: "+12%", trend: "up" },
+    { label: "Tiempo respuesta prom.", value: "42s", delta: "−18%", trend: "up" },
+    { label: "Resueltas por Zero", value: "78%", delta: "+4 pts", trend: "up" },
+    { label: "Hs humanas ahorradas", value: "21h", delta: "semana", trend: "neutral" },
+  ],
+  series: [0.18,0.12,0.08,0.06,0.05,0.05,0.08,0.12,0.22,0.38,0.55,0.64,0.72,0.80,0.72,0.65,0.58,0.52,0.60,0.78,0.92,0.88,0.70,0.42],
+  byChannel: [
+    { label: "WhatsApp", value: 104, pct: 56 },
+    { label: "Instagram", value: 38, pct: 21 },
+    { label: "Email", value: 22, pct: 12 },
+    { label: "Web Chat", value: 15, pct: 8 },
+    { label: "Telegram", value: 5, pct: 3 },
+  ],
+  csat: { score: 4.7, count: 142 },
+  period: "7d",
+};
+
+export const MOCK_AGENT_CONFIG: AgentConfig = {
+  name: "Zero",
+  businessName: "Aurora Bazar",
+  tones: ["Cercano", "Profesional", "Divertido", "Directo", "Formal"],
+  activeTones: ["Cercano", "Profesional"],
+  languages: [
+    { code: "ES", active: true },
+    { code: "EN", active: true },
+    { code: "PT", active: false },
+    { code: "FR", active: false },
+  ],
+  instructions:
+    "Sos Zero, el asistente de Aurora Bazar. Respondé siempre en argentino casual (voseo). Si el cliente menciona un producto, ofrecé opciones complementarias del catálogo. Nunca prometas descuentos sin confirmar.",
+  escalationRules: [
+    { rule: 'Si el cliente escribe "hablar con humano" o similar', active: true },
+    { rule: "Si el pedido supera $50.000", active: true },
+    { rule: "Si hay 3 mensajes consecutivos sin resolver", active: true },
+    { rule: "Si se detecta frustración (sentiment < −0.6)", active: false },
+  ],
+  knowledgeSources: [
+    { name: "FAQ · Aurora Bazar.pdf", size: "32 KB", detail: "14 chunks · indexado hace 2h", synced: true },
+    { name: "Política de devoluciones.md", size: "4 KB", detail: "3 chunks · indexado hace 2h", synced: true },
+    { name: "Catálogo otoño 2026.csv", size: "148 KB", detail: "284 productos · sync continuo", synced: true },
+    { name: "Horarios y sucursales.md", size: "1 KB", detail: "reindexando…", synced: false },
+  ],
+  version: 48,
+  publishedAt: "hace 2h",
+};

@@ -6,7 +6,19 @@
       "Read(//tmp/**)",
       "Bash(npm install *)",
       "Bash(npx shadcn@latest init --yes --base-color neutral --css-variables)",
-      "Bash(npx shadcn@latest init -d)"
+      "Bash(npx shadcn@latest init -d)",
+      "Bash(npx shadcn@latest add badge separator tooltip scroll-area sheet avatar dropdown-menu)",
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(curl *)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(pkill -f \"next-server\")",
+      "Bash(tee /tmp/zero-dev.log)",
+      "Bash(netstat -ano)",
+      "Bash(netstat -ano -p tcp)",
+      "Bash(tasklist /FI \"PID eq 37216\" /FO LIST)",
+      "Bash(grep -o \"\\\\\"[^\\\\\"]*127\\\\\\\\.0\\\\\\\\.0\\\\\\\\.1:3000[^\\\\\"]*\\\\\"\" .next/dev/static/chunks/src_0rnydpq._.js)"
     ]
   }
 }
