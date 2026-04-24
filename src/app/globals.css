@@ -343,6 +343,59 @@
   .persona-day-row-times { flex-basis: 100%; }
 }
 
+/* ── Plans modal v2 (layout 2 columnas desktop, stack en mobile) ── */
+.plans-modal-panel-v2 {
+  position: relative;
+  width: 100%;
+  max-width: 960px;
+  max-height: 92vh;
+  overflow-y: auto;
+  border-radius: 14px;
+  background: linear-gradient(
+    180deg,
+    oklch(0.14 0.02 280) 0%,
+    oklch(0.12 0.02 280) 100%
+  );
+  border: 1px solid var(--hair);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  scrollbar-width: thin;
+}
+.plans-modal-grid-v2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  min-height: 420px;
+}
+.plans-modal-hero {
+  padding: 40px 36px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.plans-modal-card {
+  position: relative;
+  border-left: 1px solid var(--hair);
+  background: rgba(255, 255, 255, 0.02);
+}
+@media (max-width: 760px) {
+  .plans-modal-panel-v2 {
+    max-width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+    min-height: 100vh;
+  }
+  .plans-modal-grid-v2 {
+    grid-template-columns: 1fr;
+  }
+  .plans-modal-hero {
+    padding: 28px 22px 12px;
+  }
+  .plans-modal-card {
+    border-left: none;
+    border-top: 1px solid var(--hair);
+  }
+}
+
 /* ── Services row layout ── */
 .services-row {
   display: flex;
