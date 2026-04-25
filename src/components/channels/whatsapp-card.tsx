@@ -278,7 +278,7 @@ export function WhatsappCard({ tenantId }: { tenantId: string }) {
                 textOverflow: "ellipsis",
               }}
             >
-              {state?.number || "Sin número configurado"} · {state?.provider ?? "baileys"}
+              {state?.number || "Sin número configurado"}
             </div>
           </div>
           {state && <StatusPill status={state.status} />}
