@@ -1,12 +1,22 @@
 import { api } from "./client";
-import type { MessageSource, SandboxChatResponse } from "./contract";
+import type { SandboxChatResponse, SandboxResetResponse } from "./contract";
 
 export function sandboxChat(
   tenantId: string,
-  body: { source: MessageSource; message: string; sender_name?: string }
+  body: { session_id: string; message: string; sender_name?: string }
 ): Promise<SandboxChatResponse> {
   return api.post(
     `/api/admin/tenants/${encodeURIComponent(tenantId)}/sandbox/chat`,
-    body
+    { ...body, action: "message" }
+  );
+}
+
+export function sandboxReset(
+  tenantId: string,
+  sessionId: string
+): Promise<SandboxResetResponse> {
+  return api.post(
+    `/api/admin/tenants/${encodeURIComponent(tenantId)}/sandbox/chat`,
+    { session_id: sessionId, action: "reset" }
   );
 }

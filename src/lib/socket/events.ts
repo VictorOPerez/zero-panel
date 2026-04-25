@@ -27,6 +27,19 @@ export interface RealtimeRequestPayload {
   };
 }
 
+export interface SandboxTypingPayload {
+  sessionId: string;
+  typing: boolean;
+}
+
+export interface SandboxReplyPayload {
+  sessionId: string;
+  reply: string;
+  route: string;
+  trace_id: string;
+  llm_elapsed_ms: number;
+}
+
 export interface ServerToClientEvents {
   "message:new": (payload: {
     conversationId: string;
@@ -45,10 +58,14 @@ export interface ServerToClientEvents {
   "typing:contact": (payload: { conversationId: string; typing: boolean }) => void;
   "typing:zero": (payload: { conversationId: string; typing: boolean }) => void;
   "request:new": (payload: RealtimeRequestPayload) => void;
+  "sandbox:typing": (payload: SandboxTypingPayload) => void;
+  "sandbox:reply": (payload: SandboxReplyPayload) => void;
 }
 
 export interface ClientToServerEvents {
   "subscribe:conversation": (conversationId: string) => void;
   "unsubscribe:conversation": (conversationId: string) => void;
   "join:tenant": (tenantId: string) => void;
+  "join:sandbox": (payload: { tenantId: string; sessionId: string }) => void;
+  "leave:sandbox": (payload: { tenantId: string; sessionId: string }) => void;
 }

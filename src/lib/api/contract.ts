@@ -415,7 +415,13 @@ export interface SandboxChatResponse {
   typing_ms: number;
   llm_elapsed_ms: number;
   behavior_used: TenantPersonaBehaviorConfig;
-  channel: MessageSource;
+  channel: "sandbox";
+  session_id: string;
+}
+
+export interface SandboxResetResponse {
+  ok: true;
+  reset: true;
 }
 
 // ── Errors ─────────────────────────────────────────────────────────────────

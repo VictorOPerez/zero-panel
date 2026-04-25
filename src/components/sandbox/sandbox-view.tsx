@@ -1,31 +1,46 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Copy, Loader2, Send } from "lucide-react";
-import { sandboxChat } from "@/lib/api/sandbox";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Send, RotateCcw, Phone, Video, MoreVertical, Smile, Paperclip, Mic } from "lucide-react";
+import { sandboxChat, sandboxReset } from "@/lib/api/sandbox";
+import { getTenant } from "@/lib/api/tenants";
 import { ApiError } from "@/lib/api/client";
+import { getSocket, connectSocket } from "@/lib/socket/client";
 import { PageShell } from "@/components/panel/page-shell";
 import { RequireTenant } from "@/components/panel/require-tenant";
-import type { MessageSource, SandboxRoute } from "@/lib/api/contract";
 
-type SandboxMessage =
-  | { id: string; from: "user"; text: string }
+type Bubble =
+  | {
+      id: string;
+      from: "user";
+      text: string;
+      sentAt: number;
+      status: "sent" | "delivered" | "read";
+    }
   | {
       id: string;
       from: "bot";
       text: string;
-      route: SandboxRoute;
-      trace_id: string;
-      typing_ms: number;
-      llm_elapsed_ms: number;
-      pending?: boolean;
+      sentAt: number;
+      route?: string;
+      pending: boolean;
     };
 
-const CHANNELS: { id: MessageSource; label: string }[] = [
-  { id: "whatsapp", label: "WhatsApp" },
-  { id: "telegram", label: "Telegram" },
-  { id: "websocket", label: "WebSocket" },
-];
+const FAKE_NUMBER = "+1 555 010 1212";
+
+function newSessionId(): string {
+  // crypto.randomUUID si existe; fallback simple
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `s-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function formatTime(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
 export function SandboxView() {
   return (
@@ -34,60 +49,96 @@ export function SandboxView() {
 }
 
 function SandboxContent({ tenantId }: { tenantId: string }) {
-  const [channel, setChannel] = useState<MessageSource>("whatsapp");
-  const [senderName, setSenderName] = useState("");
+  const [sessionId, setSessionId] = useState<string>(() => newSessionId());
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [messages, setMessages] = useState<SandboxMessage[]>([]);
+  const [messages, setMessages] = useState<Bubble[]>([]);
+  const [botTyping, setBotTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const tenantQuery = useQuery({
+    queryKey: ["tenant", tenantId],
+    queryFn: () => getTenant(tenantId).then((r) => r.tenant),
+    staleTime: 60_000,
+  });
+  const businessName = tenantQuery.data?.business.name ?? "Tu negocio";
+  const initials = useMemo(() => {
+    return businessName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0]?.toUpperCase() ?? "")
+      .join("") || "Z";
+  }, [businessName]);
+
+  // Auto-scroll al final
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages.length]);
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [messages.length, botTyping]);
+
+  // Suscripción a socket sandbox para typing del bot
+  useEffect(() => {
+    if (!tenantId || !sessionId) return;
+    const socket = connectSocket(tenantId);
+    const join = () => socket.emit("join:sandbox", { tenantId, sessionId });
+    if (socket.connected) join();
+    else socket.once("connect", join);
+
+    const onTyping = (payload: { sessionId: string; typing: boolean }) => {
+      if (payload.sessionId !== sessionId) return;
+      setBotTyping(payload.typing);
+    };
+    socket.on("sandbox:typing", onTyping);
+
+    return () => {
+      socket.off("sandbox:typing", onTyping);
+      socket.emit("leave:sandbox", { tenantId, sessionId });
+    };
+  }, [tenantId, sessionId]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const message = text.trim();
     if (!message || submitting) return;
+
+    const userId = `u-${Date.now()}`;
+    setMessages((m) => [
+      ...m,
+      { id: userId, from: "user", text: message, sentAt: Date.now(), status: "sent" },
+    ]);
+    setText("");
     setSubmitting(true);
     setError(null);
 
-    const userMsg: SandboxMessage = {
-      id: `u-${Date.now()}`,
-      from: "user",
-      text: message,
-    };
-    setMessages((m) => [...m, userMsg]);
-    setText("");
-
     try {
       const res = await sandboxChat(tenantId, {
-        source: channel,
+        session_id: sessionId,
         message,
-        sender_name: senderName || undefined,
       });
-      const pendingId = `b-pending-${Date.now()}`;
-      const pending: SandboxMessage = {
-        id: pendingId,
-        from: "bot",
-        text: "",
-        route: res.route,
-        trace_id: res.trace_id,
-        typing_ms: res.typing_ms,
-        llm_elapsed_ms: res.llm_elapsed_ms,
-        pending: true,
-      };
-      setMessages((m) => [...m, pending]);
-      // Simular typing antes de revelar respuesta.
-      await new Promise((r) => setTimeout(r, Math.min(res.typing_ms, 5000)));
+      // Marcar el último user como "read" (azul) tras la respuesta del bot.
       setMessages((m) =>
         m.map((msg) =>
-          msg.id === pendingId
-            ? { ...msg, pending: false, text: res.reply }
+          msg.id === userId && msg.from === "user"
+            ? { ...msg, status: "read" }
             : msg
         )
       );
+      // Insertar la respuesta como bubble bot. El delay simulado lo da el typing
+      // del socket — al llegar el reply, ocultamos el typing.
+      setMessages((m) => [
+        ...m,
+        {
+          id: `b-${Date.now()}`,
+          from: "bot",
+          text: res.reply,
+          sentAt: Date.now(),
+          route: res.route,
+          pending: false,
+        },
+      ]);
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -99,17 +150,33 @@ function SandboxContent({ tenantId }: { tenantId: string }) {
     }
   }
 
+  async function onReset() {
+    try {
+      await sandboxReset(tenantId, sessionId);
+    } catch {
+      // best-effort
+    }
+    setMessages([]);
+    setBotTyping(false);
+    setError(null);
+    // Nueva sesión tras reset, así el bot no recuerda al "cliente" anterior.
+    setSessionId(newSessionId());
+  }
+
   return (
     <PageShell
-      title="Sandbox"
-      subtitle="Probá el bot en vivo con la persona actual. Ideal para iterar prompts sin redeploy."
+      title="Simulador"
+      subtitle="Probá tu agente como lo vería un cliente real. Es tu canal de prueba — no consume tokens del plan ni aparece en el inbox."
       actions={
         <button
           type="button"
-          onClick={() => setMessages([])}
+          onClick={onReset}
           style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
             padding: "6px 12px",
-            borderRadius: 5,
+            borderRadius: 6,
             border: "1px solid var(--hair-strong)",
             background: "rgba(255,255,255,0.03)",
             color: "var(--text-1)",
@@ -118,292 +185,402 @@ function SandboxContent({ tenantId }: { tenantId: string }) {
             cursor: "pointer",
           }}
         >
-          Limpiar
+          <RotateCcw size={11} />
+          Reiniciar chat
         </button>
       }
     >
       <div
-        className="glass"
         style={{
-          borderRadius: 12,
           display: "grid",
-          gridTemplateRows: "auto 1fr auto",
-          height: "calc(100dvh - 200px)",
-          minHeight: 420,
+          gridTemplateColumns: "minmax(0, 460px)",
+          justifyContent: "center",
+          padding: "8px 0",
         }}
       >
-        {/* Channel selector */}
-        <div
-          style={{
-            padding: 10,
-            borderBottom: "1px solid var(--hair)",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            flexWrap: "wrap",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              gap: 2,
-              padding: 3,
-              background: "rgba(0,0,0,0.25)",
-              borderRadius: 8,
-              border: "1px solid var(--hair)",
-            }}
-          >
-            {CHANNELS.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setChannel(c.id)}
-                style={{
-                  padding: "5px 12px",
-                  borderRadius: 6,
-                  border: "none",
-                  background:
-                    channel === c.id
-                      ? "linear-gradient(90deg, oklch(0.62 0.22 295 / 0.25), oklch(0.80 0.13 200 / 0.18))"
-                      : "transparent",
-                  color: channel === c.id ? "var(--text-0)" : "var(--text-2)",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
-              >
-                {c.label}
-              </button>
-            ))}
+        <div className="sandbox-phone">
+          {/* WhatsApp header */}
+          <div className="sb-header">
+            <div className="sb-avatar" aria-hidden>{initials}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="sb-name" title={businessName}>{businessName}</div>
+              <div className="sb-status">
+                {botTyping ? "escribiendo…" : "en línea"}
+              </div>
+            </div>
+            <button className="sb-icon-btn" type="button" aria-label="Videollamada">
+              <Video size={18} />
+            </button>
+            <button className="sb-icon-btn" type="button" aria-label="Llamar">
+              <Phone size={18} />
+            </button>
+            <button className="sb-icon-btn" type="button" aria-label="Más">
+              <MoreVertical size={18} />
+            </button>
           </div>
-          <input
-            placeholder="Nombre del contacto (opcional)"
-            value={senderName}
-            onChange={(e) => setSenderName(e.target.value)}
-            style={{
-              flex: 1,
-              minWidth: 180,
-              padding: "7px 10px",
-              borderRadius: 6,
-              border: "1px solid var(--hair)",
-              background: "rgba(0,0,0,0.2)",
-              color: "var(--text-0)",
-              fontSize: 12,
-            }}
-          />
-        </div>
 
-        {/* Messages */}
-        <div
-          ref={scrollRef}
-          style={{
-            overflowY: "auto",
-            padding: 16,
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-          }}
-        >
-          {messages.length === 0 && (
-            <div
-              style={{
-                textAlign: "center",
-                color: "var(--text-3)",
-                fontSize: 12,
-                padding: 40,
-              }}
-            >
-              Escribí un mensaje para probar el bot.
+          {/* Messages */}
+          <div ref={scrollRef} className="sb-messages">
+            <div className="sb-day-divider">
+              <span>HOY</span>
             </div>
-          )}
-          {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} />
-          ))}
-          {error && (
-            <div
-              role="alert"
-              style={{
-                padding: "8px 10px",
-                borderRadius: 8,
-                border: "1px solid oklch(0.68 0.21 25 / 0.4)",
-                background: "oklch(0.68 0.21 25 / 0.1)",
-                color: "var(--z-red)",
-                fontSize: 12,
-              }}
-            >
-              {error}
+            <div className="sb-system-bubble">
+              {FAKE_NUMBER} · Mensajes y llamadas cifrados de extremo a extremo.
             </div>
-          )}
-        </div>
 
-        {/* Composer */}
-        <form
-          onSubmit={onSubmit}
-          style={{
-            padding: 10,
-            borderTop: "1px solid var(--hair)",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                onSubmit(e as unknown as React.FormEvent);
-              }
-            }}
-            rows={1}
-            maxLength={2000}
-            placeholder="Escribí tu mensaje…"
-            style={{
-              flex: 1,
-              resize: "none",
-              padding: "9px 10px",
-              borderRadius: 8,
-              border: "1px solid var(--hair-strong)",
-              background: "rgba(0,0,0,0.2)",
-              color: "var(--text-0)",
-              fontSize: 13,
-              fontFamily: "inherit",
-              maxHeight: 120,
-            }}
-          />
-          <button
-            type="submit"
-            disabled={submitting || !text.trim()}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "9px 14px",
-              borderRadius: 8,
-              border: "none",
-              background:
-                submitting || !text.trim() ? "rgba(255,255,255,0.06)" : "var(--aurora)",
-              color: submitting || !text.trim() ? "var(--text-3)" : "#0a0a0f",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: submitting || !text.trim() ? "not-allowed" : "pointer",
-            }}
-          >
-            {submitting ? (
-              <Loader2 size={13} style={{ animation: "spin 900ms linear infinite" }} />
-            ) : (
-              <Send size={13} />
+            {messages.length === 0 && !botTyping && (
+              <div className="sb-empty">
+                Escribí un mensaje para probar a tu agente.
+                <br />
+                <span style={{ opacity: 0.7 }}>
+                  Esta conversación es privada — no se le envía a ningún cliente real.
+                </span>
+              </div>
             )}
-            Enviar
-          </button>
-        </form>
+
+            {messages.map((m) => <MessageBubble key={m.id} bubble={m} />)}
+
+            {botTyping && <TypingBubble />}
+
+            {error && (
+              <div className="sb-error" role="alert">
+                {error}
+              </div>
+            )}
+          </div>
+
+          {/* Composer */}
+          <form onSubmit={onSubmit} className="sb-composer">
+            <button
+              type="button"
+              className="sb-icon-btn sb-comp-icon"
+              aria-label="Emoji"
+            >
+              <Smile size={20} />
+            </button>
+            <button
+              type="button"
+              className="sb-icon-btn sb-comp-icon"
+              aria-label="Adjuntar"
+            >
+              <Paperclip size={20} />
+            </button>
+            <textarea
+              className="sb-input"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  onSubmit(e as unknown as React.FormEvent);
+                }
+              }}
+              rows={1}
+              maxLength={2000}
+              placeholder="Mensaje"
+              disabled={submitting}
+            />
+            <button
+              type="submit"
+              disabled={submitting || !text.trim()}
+              className="sb-send-btn"
+              aria-label={text.trim() ? "Enviar" : "Audio"}
+            >
+              {text.trim() ? <Send size={18} /> : <Mic size={18} />}
+            </button>
+          </form>
+        </div>
       </div>
+
+      <SandboxStyles />
     </PageShell>
   );
 }
 
-function MessageBubble({ message }: { message: SandboxMessage }) {
-  if (message.from === "user") {
-    return (
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <div
-          style={{
-            maxWidth: "80%",
-            padding: "8px 12px",
-            borderRadius: 10,
-            background: "var(--aurora)",
-            color: "#0a0a0f",
-            fontSize: 13,
-            fontWeight: 500,
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {message.text}
-        </div>
-      </div>
-    );
-  }
+function MessageBubble({ bubble }: { bubble: Bubble }) {
+  const isUser = bubble.from === "user";
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, maxWidth: "85%" }}>
-      <div
-        style={{
-          padding: "8px 12px",
-          borderRadius: 10,
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid var(--hair)",
-          color: "var(--text-0)",
-          fontSize: 13,
-          whiteSpace: "pre-wrap",
-          minWidth: 60,
-        }}
-      >
-        {message.pending ? (
-          <span style={{ display: "inline-flex", gap: 4 }}>
-            <Dot /> <Dot delay={150} /> <Dot delay={300} />
-          </span>
-        ) : (
-          message.text
-        )}
-      </div>
-      <div
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          fontSize: 10,
-          color: "var(--text-3)",
-          fontFamily: "var(--font-jetbrains-mono)",
-        }}
-      >
-        <span
-          style={{
-            padding: "2px 6px",
-            borderRadius: 4,
-            background: "rgba(255,255,255,0.05)",
-            border: "1px solid var(--hair)",
-          }}
-        >
-          {message.route}
-        </span>
-        <span>typing {message.typing_ms}ms</span>
-        <span>· llm {message.llm_elapsed_ms}ms</span>
-        <button
-          type="button"
-          title="Copiar trace_id"
-          onClick={() => navigator.clipboard.writeText(message.trace_id)}
-          style={{
-            border: "none",
-            background: "transparent",
-            color: "var(--text-3)",
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            padding: 0,
-            fontFamily: "inherit",
-            fontSize: 10,
-          }}
-        >
-          <Copy size={10} />
-          {message.trace_id.slice(0, 10)}
-        </button>
+    <div className={`sb-row ${isUser ? "sb-row-user" : "sb-row-bot"}`}>
+      <div className={`sb-bubble ${isUser ? "sb-bubble-user" : "sb-bubble-bot"}`}>
+        <div className="sb-bubble-text">{bubble.text}</div>
+        <div className="sb-bubble-meta">
+          <span>{formatTime(bubble.sentAt)}</span>
+          {isUser && bubble.from === "user" && (
+            <Ticks status={bubble.status} />
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function Dot({ delay = 0 }: { delay?: number }) {
+function Ticks({ status }: { status: "sent" | "delivered" | "read" }) {
+  // Doble tilde estilo WhatsApp; "read" en azul.
+  const blue = status === "read";
   return (
     <span
+      aria-hidden
       style={{
-        display: "inline-block",
-        width: 5,
-        height: 5,
-        borderRadius: "50%",
-        background: "var(--text-2)",
-        animation: `pulse-dot 1s ${delay}ms ease-in-out infinite`,
+        display: "inline-flex",
+        alignItems: "center",
+        marginLeft: 4,
+        color: blue ? "#53bdeb" : "rgba(255,255,255,0.55)",
+        fontSize: 11,
+        lineHeight: 1,
       }}
-    />
+    >
+      <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
+        <path
+          d="M11.071.653a.5.5 0 0 1 .076.704L5.51 8.07a.5.5 0 0 1-.755.04L1.343 4.694a.5.5 0 0 1 .707-.707l3.034 3.034L10.367.729a.5.5 0 0 1 .704-.076Z"
+          fill="currentColor"
+        />
+        <path
+          d="M15.071.653a.5.5 0 0 1 .076.704L9.51 8.07a.5.5 0 0 1-.755.04l-.7-.7a.5.5 0 0 1 .707-.707l.314.314L14.367.729a.5.5 0 0 1 .704-.076Z"
+          fill="currentColor"
+        />
+      </svg>
+    </span>
+  );
+}
+
+function TypingBubble() {
+  return (
+    <div className="sb-row sb-row-bot">
+      <div className="sb-bubble sb-bubble-bot sb-typing-bubble">
+        <span className="sb-typing-dot" />
+        <span className="sb-typing-dot" style={{ animationDelay: "150ms" }} />
+        <span className="sb-typing-dot" style={{ animationDelay: "300ms" }} />
+      </div>
+    </div>
+  );
+}
+
+function SandboxStyles() {
+  return (
+    <style jsx global>{`
+      .sandbox-phone {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        height: calc(100dvh - 200px);
+        min-height: 520px;
+        max-height: 820px;
+        background: #0b141a;
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      }
+
+      .sb-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        background: #202c33;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      }
+      .sb-avatar {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #00a884, #008069);
+        display: grid;
+        place-items: center;
+        color: #fff;
+        font-weight: 600;
+        font-size: 14px;
+        flex-shrink: 0;
+      }
+      .sb-name {
+        font-size: 14px;
+        font-weight: 500;
+        color: #e9edef;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .sb-status {
+        font-size: 12px;
+        color: #8696a0;
+        line-height: 1.2;
+      }
+      .sb-icon-btn {
+        background: transparent;
+        border: none;
+        color: #aebac1;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .sb-icon-btn:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .sb-messages {
+        position: relative;
+        overflow-y: auto;
+        padding: 14px 8%;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        background-color: #0b141a;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><g fill='none' stroke='%231a2329' stroke-width='1' opacity='0.7'><circle cx='5' cy='5' r='1.4'/><circle cx='25' cy='15' r='1.4'/><circle cx='10' cy='30' r='1.4'/><circle cx='35' cy='35' r='1.4'/></g></svg>");
+      }
+
+      .sb-day-divider {
+        align-self: center;
+        margin: 8px 0 14px;
+      }
+      .sb-day-divider span {
+        background: #182229;
+        color: #8696a0;
+        padding: 5px 12px;
+        border-radius: 8px;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.4px;
+      }
+      .sb-system-bubble {
+        align-self: center;
+        background: #182229;
+        color: #ffd279;
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-size: 11.5px;
+        text-align: center;
+        margin-bottom: 14px;
+        max-width: 90%;
+      }
+      .sb-empty {
+        margin: auto;
+        text-align: center;
+        color: #8696a0;
+        font-size: 13px;
+        padding: 32px 16px;
+        line-height: 1.5;
+      }
+      .sb-error {
+        align-self: center;
+        background: rgba(229, 79, 79, 0.15);
+        color: #ff8b8b;
+        border: 1px solid rgba(229, 79, 79, 0.4);
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        margin-top: 8px;
+      }
+
+      .sb-row {
+        display: flex;
+        margin-top: 4px;
+      }
+      .sb-row-user {
+        justify-content: flex-end;
+      }
+      .sb-row-bot {
+        justify-content: flex-start;
+      }
+      .sb-bubble {
+        max-width: 78%;
+        padding: 6px 9px 6px 11px;
+        border-radius: 8px;
+        font-size: 14px;
+        line-height: 1.36;
+        position: relative;
+        box-shadow: 0 1px 0.5px rgba(0, 0, 0, 0.13);
+      }
+      .sb-bubble-user {
+        background: #005c4b;
+        color: #e9edef;
+        border-top-right-radius: 0;
+      }
+      .sb-bubble-bot {
+        background: #202c33;
+        color: #e9edef;
+        border-top-left-radius: 0;
+      }
+      .sb-bubble-text {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        padding-right: 56px; /* deja espacio para meta */
+      }
+      .sb-bubble-meta {
+        position: absolute;
+        right: 8px;
+        bottom: 4px;
+        font-size: 10.5px;
+        color: rgba(255, 255, 255, 0.55);
+        display: inline-flex;
+        align-items: center;
+      }
+
+      .sb-typing-bubble {
+        display: inline-flex;
+        gap: 4px;
+        padding: 12px 14px;
+      }
+      .sb-typing-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #8696a0;
+        display: inline-block;
+        animation: sb-pulse 1.2s ease-in-out infinite;
+      }
+      @keyframes sb-pulse {
+        0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+        30% { transform: translateY(-4px); opacity: 1; }
+      }
+
+      .sb-composer {
+        display: flex;
+        align-items: flex-end;
+        gap: 4px;
+        padding: 8px 10px;
+        background: #202c33;
+        border-top: 1px solid rgba(255, 255, 255, 0.04);
+      }
+      .sb-comp-icon {
+        margin-bottom: 4px;
+      }
+      .sb-input {
+        flex: 1;
+        resize: none;
+        padding: 9px 12px;
+        border-radius: 8px;
+        border: none;
+        background: #2a3942;
+        color: #e9edef;
+        font-size: 14px;
+        font-family: inherit;
+        line-height: 1.4;
+        max-height: 120px;
+        outline: none;
+      }
+      .sb-input::placeholder {
+        color: #8696a0;
+      }
+      .sb-send-btn {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: none;
+        background: #00a884;
+        color: #fff;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .sb-send-btn:disabled {
+        background: #2a3942;
+        color: #8696a0;
+        cursor: not-allowed;
+      }
+    `}</style>
   );
 }
