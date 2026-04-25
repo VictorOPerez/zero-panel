@@ -240,6 +240,38 @@ function BusinessForm({ tenantId }: { tenantId: string }) {
               hint="Útil cuando el bot tiene que escalar al humano."
             />
           </div>
+
+          {/* Botón Guardar duplicado al final del form — en mobile el del
+              header queda lejos cuando el form se hace largo, y un cliente
+              que terminó de tipear no debería volver al top para guardar. */}
+          <div className="business-save-foot">
+            <button
+              type="submit"
+              disabled={!dirty || save.isPending}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "11px 18px",
+                borderRadius: 6,
+                border: "none",
+                background: dirty ? "var(--aurora)" : "rgba(255,255,255,0.06)",
+                color: dirty ? "#0a0a0f" : "var(--text-3)",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: dirty && !save.isPending ? "pointer" : "not-allowed",
+                width: "100%",
+                justifyContent: "center",
+              }}
+            >
+              {save.isPending ? (
+                <Loader2 size={13} style={{ animation: "spin 900ms linear infinite" }} />
+              ) : (
+                <Check size={13} />
+              )}
+              Guardar cambios
+            </button>
+          </div>
         </form>
       )}
 
@@ -249,8 +281,20 @@ function BusinessForm({ tenantId }: { tenantId: string }) {
           grid-template-columns: 1fr 1fr;
           gap: 14px;
         }
+        .business-save-foot {
+          display: none;
+        }
+        /* Mobile: input a 16px (evita zoom de iOS al focusear), grid a una
+           columna, botón Guardar duplicado abajo full-width. */
         @media (max-width: 640px) {
           .business-grid-2 { grid-template-columns: 1fr; }
+          .business-save-foot {
+            display: block;
+            margin-top: 18px;
+            padding-top: 14px;
+            border-top: 1px solid var(--hair);
+          }
+          .business-input { font-size: 16px !important; }
         }
       `}</style>
     </PageShell>
@@ -302,6 +346,7 @@ function Field({
       </span>
       {multiline ? (
         <textarea
+          className="business-input"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
@@ -310,6 +355,7 @@ function Field({
         />
       ) : (
         <input
+          className="business-input"
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
