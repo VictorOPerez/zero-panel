@@ -29,6 +29,7 @@ function Services({ tenantId }: { tenantId: string }) {
     name: string;
     duration: string;
     price: string;
+    description: string;
   } | null>(null);
 
   const query = useQuery({
@@ -56,17 +57,26 @@ function Services({ tenantId }: { tenantId: string }) {
 
   function addService() {
     if (!newDraft) {
-      setNewDraft({ name: "", duration: "45", price: "" });
+      setNewDraft({ name: "", duration: "45", price: "", description: "" });
       return;
     }
     const name = newDraft.name.trim();
     const duration = Number(newDraft.duration);
+    const description = newDraft.description.trim();
     if (!name) {
       setError("Poné un nombre al servicio.");
       return;
     }
     if (!Number.isFinite(duration) || duration < 5 || duration > 1440) {
       setError("La duración debe ser entre 5 y 1440 minutos.");
+      return;
+    }
+    if (!description) {
+      setError("La descripción es obligatoria — el bot la usa pa contarle al cliente qué incluye el servicio.");
+      return;
+    }
+    if (description.length > 500) {
+      setError("La descripción no puede pasar de 500 caracteres.");
       return;
     }
     const priceCents = newDraft.price.trim()
@@ -81,6 +91,7 @@ function Services({ tenantId }: { tenantId: string }) {
       name,
       duration_minutes: duration,
       price_cents: priceCents,
+      description,
     });
   }
 
@@ -196,6 +207,29 @@ function Services({ tenantId }: { tenantId: string }) {
               />
             </DraftField>
           </div>
+          <DraftField label="Descripción (obligatoria)">
+            <textarea
+              value={newDraft.description}
+              onChange={(e) =>
+                setNewDraft({ ...newDraft, description: e.target.value })
+              }
+              placeholder="Ej: corte con máquina y tijera, incluye lavado y peinado"
+              maxLength={500}
+              rows={2}
+              style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }}
+            />
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--text-3)",
+                marginTop: 3,
+                lineHeight: 1.4,
+              }}
+            >
+              El bot usa esto para contarle al cliente qué incluye. Una o dos
+              oraciones bastan.
+            </span>
+          </DraftField>
           <div style={{ display: "flex", gap: 6 }}>
             <button
               type="button"
@@ -399,15 +433,23 @@ function ServiceRow({
         </Field>
       </div>
 
-      <Field label="Descripción (opcional)">
+      <Field label="Descripción">
         <input
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          onBlur={() =>
-            saveIfChanged("description", description.trim() || null, service.description)
-          }
+          onBlur={() => {
+            const trimmed = description.trim();
+            if (!trimmed) {
+              // Vacía no es válida — el bot necesita el contexto. Revertimos
+              // al valor anterior y avisamos.
+              onError("La descripción es obligatoria. La revertimos al valor anterior.");
+              setDescription(service.description ?? "");
+              return;
+            }
+            saveIfChanged("description", trimmed, service.description);
+          }}
           maxLength={500}
-          placeholder="Ej: máquina + tijera"
+          placeholder="Ej: corte con máquina y tijera, incluye lavado"
           style={inputStyle}
         />
       </Field>
