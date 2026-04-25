@@ -30,7 +30,7 @@ function CalendarInner({ tenantId }: { tenantId: string }) {
   const eventsQuery = useQuery({
     queryKey: ["calendar-events", tenantId],
     queryFn: () => listCalendarEvents(tenantId, { limit: 50 }),
-    enabled: Boolean(statusQuery.data?.status.connected),
+    enabled: Boolean(statusQuery.data?.status?.connected),
   });
 
   const connect = useMutation({
@@ -218,12 +218,12 @@ function CalendarInner({ tenantId }: { tenantId: string }) {
             {eventsQuery.isLoading && (
               <div style={{ padding: 16, color: "var(--text-2)", fontSize: 12 }}>Cargando…</div>
             )}
-            {eventsQuery.data?.events.length === 0 && (
+            {eventsQuery.data?.events?.length === 0 && (
               <div style={{ padding: 24, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>
                 Sin eventos próximos
               </div>
             )}
-            {eventsQuery.data?.events.map((e, i, arr) => (
+            {eventsQuery.data?.events?.map((e, i, arr) => (
               <div
                 key={e.id}
                 className="calendar-event-row"

@@ -63,7 +63,7 @@ function SandboxContent({ tenantId }: { tenantId: string }) {
     queryFn: () => getTenant(tenantId).then((r) => r.tenant),
     staleTime: 60_000,
   });
-  const businessName = tenantQuery.data?.business.name ?? "Tu negocio";
+  const businessName = tenantQuery.data?.business?.name ?? "Tu negocio";
   const initials = useMemo(() => {
     return businessName
       .split(/\s+/)

@@ -105,7 +105,7 @@ function PersonaEditor({ tenantId }: { tenantId: string }) {
       >
   );
 
-  const persona = tenantQuery.data?.tenant.persona;
+  const persona = tenantQuery.data?.tenant?.persona;
 
   useEffect(() => {
     if (!persona) return;
