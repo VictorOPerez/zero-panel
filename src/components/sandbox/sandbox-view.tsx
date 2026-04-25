@@ -56,6 +56,7 @@ function SandboxContent({ tenantId }: { tenantId: string }) {
   const [botTyping, setBotTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const tenantQuery = useQuery({
     queryKey: ["tenant", tenantId],
@@ -147,6 +148,10 @@ function SandboxContent({ tenantId }: { tenantId: string }) {
       );
     } finally {
       setSubmitting(false);
+      // Mantener el foco en el input para escribir el siguiente mensaje sin
+      // tener que cliquear de nuevo. requestAnimationFrame se asegura de que
+      // el textarea esté habilitado (disabled removido) antes de enfocar.
+      requestAnimationFrame(() => inputRef.current?.focus());
     }
   }
 
@@ -190,14 +195,7 @@ function SandboxContent({ tenantId }: { tenantId: string }) {
         </button>
       }
     >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 460px)",
-          justifyContent: "center",
-          padding: "8px 0",
-        }}
-      >
+      <div className="sandbox-stage">
         <div className="sandbox-phone">
           {/* WhatsApp header */}
           <div className="sb-header">
@@ -266,6 +264,7 @@ function SandboxContent({ tenantId }: { tenantId: string }) {
               <Paperclip size={20} />
             </button>
             <textarea
+              ref={inputRef}
               className="sb-input"
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -278,7 +277,10 @@ function SandboxContent({ tenantId }: { tenantId: string }) {
               rows={1}
               maxLength={2000}
               placeholder="Mensaje"
-              disabled={submitting}
+              autoFocus
+              enterKeyHint="send"
+              autoComplete="off"
+              autoCapitalize="sentences"
             />
             <button
               type="submit"
@@ -358,6 +360,12 @@ function TypingBubble() {
 function SandboxStyles() {
   return (
     <style jsx global>{`
+      .sandbox-stage {
+        display: grid;
+        grid-template-columns: minmax(0, 460px);
+        justify-content: center;
+        padding: 8px 0;
+      }
       .sandbox-phone {
         display: grid;
         grid-template-rows: auto 1fr auto;
@@ -369,6 +377,22 @@ function SandboxStyles() {
         overflow: hidden;
         border: 1px solid rgba(255, 255, 255, 0.06);
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      }
+      @media (max-width: 720px) {
+        .sandbox-stage {
+          grid-template-columns: 1fr;
+          padding: 0;
+          margin: -12px -12px 0;
+        }
+        .sandbox-phone {
+          height: calc(100dvh - 140px);
+          min-height: 0;
+          max-height: none;
+          border-radius: 0;
+          border-left: none;
+          border-right: none;
+          box-shadow: none;
+        }
       }
 
       .sb-header {
@@ -423,12 +447,19 @@ function SandboxStyles() {
       .sb-messages {
         position: relative;
         overflow-y: auto;
-        padding: 14px 8%;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        padding: 14px 6%;
         display: flex;
         flex-direction: column;
         gap: 4px;
         background-color: #0b141a;
         background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><g fill='none' stroke='%231a2329' stroke-width='1' opacity='0.7'><circle cx='5' cy='5' r='1.4'/><circle cx='25' cy='15' r='1.4'/><circle cx='10' cy='30' r='1.4'/><circle cx='35' cy='35' r='1.4'/></g></svg>");
+      }
+      @media (max-width: 720px) {
+        .sb-messages { padding: 12px 10px; }
+        .sb-bubble { max-width: 85%; }
+        .sb-input { font-size: 16px; } /* evita zoom en iOS al focus */
       }
 
       .sb-day-divider {
