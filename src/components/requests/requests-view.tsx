@@ -8,6 +8,7 @@ import {
   CalendarOff,
   Check,
   CheckCircle2,
+  KeyRound,
   Loader2,
   MessageCircle,
   RefreshCw,
@@ -16,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { listPublicRequests, patchPublicRequest } from "@/lib/api/requests";
+import { setCalendarOauthAuthorization } from "@/lib/api/calendar";
 import { useRealtime } from "@/lib/socket/use-realtime";
 import { useAuthStore } from "@/store/auth";
 import { PageShell, cardStyle } from "@/components/panel/page-shell";
@@ -32,6 +34,9 @@ type ReasonMeta = {
   hint: string;
   tone: "danger" | "warn" | "info";
   cta?: { label: string; href: string };
+  // Acción especial sólo para reasons que requieren mutación (ej: autorizar
+  // OAuth de un tenant). Se renderiza como botón en vez de link.
+  action?: { kind: "authorize_calendar_oauth" };
   icon: typeof AlertTriangle;
 };
 
@@ -49,6 +54,14 @@ const REASON_META: Record<PublicRequestReason, ReasonMeta> = {
     tone: "danger",
     cta: { label: "Reconectar Calendar", href: "/integrations" },
     icon: CalendarOff,
+  },
+  calendar_oauth_pending_approval: {
+    label: "Pendiente: autorizar Calendar",
+    hint:
+      "El cliente intentó conectar Google Calendar. Agregá su email como Test user en Google Cloud Console y luego autorizalo desde acá.",
+    tone: "warn",
+    action: { kind: "authorize_calendar_oauth" },
+    icon: KeyRound,
   },
   executor_error: {
     label: "Error del bot",
@@ -295,6 +308,17 @@ function RequestNote({
 
   const isResolved = r.status === "done" || r.status === "dismissed";
 
+  // Mutación específica para reasons con action.kind = "authorize_calendar_oauth".
+  // Cuando el dueño confirma, autorizamos el tenant + marcamos la request
+  // como resuelta. El backend además emite tenant:oauth_authorized para
+  // cerrar el modal "Validando" del cliente sin polling.
+  const authorize = useMutation({
+    mutationFn: () => setCalendarOauthAuthorization(r.tenant_id, true),
+    onSuccess: () => {
+      onResolve();
+    },
+  });
+
   return (
     <article
       className="glass"
@@ -385,6 +409,42 @@ function RequestNote({
           >
             {reasonMeta.cta.label}
           </Link>
+        )}
+        {reasonMeta.action?.kind === "authorize_calendar_oauth" && !isResolved && (
+          <button
+            type="button"
+            onClick={() => {
+              if (
+                window.confirm(
+                  "¿Confirmás que ya agregaste el email del cliente como Test user en GCP? Si sí, autorizo al tenant ahora."
+                )
+              ) {
+                authorize.mutate();
+              }
+            }}
+            disabled={authorize.isPending || busy}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              padding: "4px 10px",
+              borderRadius: 5,
+              border: "none",
+              background: "var(--aurora)",
+              color: "#0a0a0f",
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: authorize.isPending ? "progress" : "pointer",
+              flexShrink: 0,
+            }}
+          >
+            {authorize.isPending ? (
+              <Loader2 size={11} style={{ animation: "spin 900ms linear infinite" }} />
+            ) : (
+              <KeyRound size={11} />
+            )}
+            Autorizar tenant
+          </button>
         )}
       </div>
 

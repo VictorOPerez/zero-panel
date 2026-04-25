@@ -381,6 +381,7 @@ export type PublicRequestStatus = "open" | "in_progress" | "done" | "dismissed";
 export type PublicRequestReason =
   | "calendar_not_connected"
   | "calendar_reauth_required"
+  | "calendar_oauth_pending_approval"
   | "executor_error"
   | "manual_intervention"
   | "other";

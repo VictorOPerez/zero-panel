@@ -7,6 +7,22 @@ export function getCalendarAuthUrl(tenantId: string): Promise<{ ok: true; url: s
   });
 }
 
+/**
+ * Marca un tenant como autorizado para iniciar el OAuth de Google Calendar.
+ * Sólo lo usa el dueño desde /requests, después de agregar el email a Test
+ * users en GCP. Emite tenant:oauth_authorized por socket para cerrar el
+ * modal "Validando" en el panel del cliente.
+ */
+export function setCalendarOauthAuthorization(
+  tenantId: string,
+  authorized: boolean
+): Promise<{ ok: true; tenant_id: string; calendar_oauth_authorized: boolean }> {
+  return api.patch(
+    `/api/admin/tenants/${encodeURIComponent(tenantId)}/calendar/oauth-authorization`,
+    { authorized }
+  );
+}
+
 export function getCalendarStatus(
   tenantId: string
 ): Promise<{ ok: true; status: GoogleCalendarStatus }> {

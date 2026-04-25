@@ -60,6 +60,7 @@ export interface ServerToClientEvents {
   "request:new": (payload: RealtimeRequestPayload) => void;
   "sandbox:typing": (payload: SandboxTypingPayload) => void;
   "sandbox:reply": (payload: SandboxReplyPayload) => void;
+  "tenant:oauth_authorized": (payload: { authorized: boolean }) => void;
 }
 
 export interface ClientToServerEvents {

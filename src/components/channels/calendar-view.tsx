@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, Unplug } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Loader2, Unplug } from "lucide-react";
 import {
   disconnectCalendar,
   getCalendarAuthUrl,
@@ -10,6 +10,7 @@ import {
 } from "@/lib/api/calendar";
 import { listCalendarEvents } from "@/lib/api/bookings";
 import { ApiError } from "@/lib/api/client";
+import { connectSocket, getSocket } from "@/lib/socket/client";
 import { PageShell, cardStyle } from "@/components/panel/page-shell";
 import { RequireTenant } from "@/components/panel/require-tenant";
 
@@ -20,6 +21,7 @@ export function CalendarView() {
 function CalendarInner({ tenantId }: { tenantId: string }) {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [oauthPending, setOauthPending] = useState(false);
 
   const statusQuery = useQuery({
     queryKey: ["calendar-status", tenantId],
@@ -38,9 +40,35 @@ function CalendarInner({ tenantId }: { tenantId: string }) {
     onSuccess: (res) => {
       if (res.url) window.location.assign(res.url);
     },
-    onError: (err) =>
-      setError(err instanceof ApiError ? err.payload.error : "No pudimos iniciar la autorización."),
+    onError: (err) => {
+      // Pre-flight bloqueado: el tenant aún no está autorizado para iniciar
+      // el OAuth (la app GCP está en testing mode y el email no está como
+      // Test user). Mostramos modal "Validando" en vez de un error feo.
+      if (err instanceof ApiError && err.payload.code === "oauth_pending_approval") {
+        setOauthPending(true);
+        setError(null);
+        return;
+      }
+      setError(err instanceof ApiError ? err.payload.error : "No pudimos iniciar la autorización.");
+    },
   });
+
+  // Socket: cuando el dueño autoriza el tenant desde /requests, el backend
+  // emite tenant:oauth_authorized → cerramos el modal y refrescamos status.
+  useEffect(() => {
+    if (!tenantId) return;
+    const socket = connectSocket(tenantId);
+    const onAuthorized = (payload: { authorized: boolean }) => {
+      if (payload.authorized) {
+        setOauthPending(false);
+        qc.invalidateQueries({ queryKey: ["calendar-status", tenantId] });
+      }
+    };
+    socket.on("tenant:oauth_authorized", onAuthorized);
+    return () => {
+      getSocket().off("tenant:oauth_authorized", onAuthorized);
+    };
+  }, [tenantId, qc]);
 
   const disconnect = useMutation({
     mutationFn: () => disconnectCalendar(tenantId),
@@ -73,6 +101,10 @@ function CalendarInner({ tenantId }: { tenantId: string }) {
         >
           {error}
         </div>
+      )}
+
+      {oauthPending && (
+        <OauthPendingModal onClose={() => setOauthPending(false)} />
       )}
 
       {status?.last_error && (
@@ -250,5 +282,100 @@ function CalendarInner({ tenantId }: { tenantId: string }) {
         </>
       )}
     </PageShell>
+  );
+}
+
+function OauthPendingModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 70,
+        background: "rgba(0,0,0,0.55)",
+        backdropFilter: "blur(6px)",
+        display: "grid",
+        placeItems: "center",
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="glass-strong"
+        style={{
+          maxWidth: 460,
+          width: "100%",
+          padding: 28,
+          borderRadius: 14,
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+        }}
+      >
+        <div
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 12,
+            background: "var(--aurora)",
+            display: "grid",
+            placeItems: "center",
+            color: "#0a0a0f",
+          }}
+        >
+          <Clock size={22} />
+        </div>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, letterSpacing: -0.3 }}>
+          Estamos validando tu acceso
+        </h2>
+        <p style={{ margin: 0, fontSize: 13, color: "var(--text-2)", lineHeight: 1.55 }}>
+          Por seguridad, los conectores de Google Calendar se autorizan uno a uno.
+          Ya avisamos al equipo y vamos a habilitarte en pocos minutos en horario laboral.
+        </p>
+        <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)", lineHeight: 1.5 }}>
+          Cuando esté listo, este modal se cierra solo y vas a poder conectar Google
+          Calendar con un click. No hace falta que recargues la página.
+        </p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
+          <a
+            href="mailto:hola@navapex.com?subject=Activación%20de%20Google%20Calendar"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "8px 14px",
+              borderRadius: 6,
+              border: "1px solid var(--hair-strong)",
+              background: "rgba(255,255,255,0.03)",
+              color: "var(--text-1)",
+              fontSize: 12,
+              fontWeight: 500,
+              textDecoration: "none",
+            }}
+          >
+            Escribir al equipo
+          </a>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 6,
+              border: "none",
+              background: "var(--aurora)",
+              color: "#0a0a0f",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Entendido
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
