@@ -16,6 +16,7 @@ import {
   Sparkles,
   Clipboard,
   Calendar,
+  Building2,
 } from "lucide-react";
 import { IconDot } from "@/components/icons";
 import { useAuthStore } from "@/store/auth";
@@ -25,6 +26,7 @@ const NAV_ITEMS = [
   { key: "inbox", label: "Inbox", href: "/inbox", icon: Inbox, badge: 14 },
   { key: "sandbox", label: "Sandbox", href: "/sandbox", icon: MessagesSquare },
   { key: "persona", label: "Persona", href: "/persona", icon: Sparkles },
+  { key: "business", label: "Negocio", href: "/business", icon: Building2 },
   { key: "services", label: "Servicios", href: "/services", icon: ListChecks },
   { key: "bookings", label: "Reservas", href: "/bookings", icon: CalendarClock },
   { key: "requests", label: "Solicitudes", href: "/requests", icon: Clipboard },
