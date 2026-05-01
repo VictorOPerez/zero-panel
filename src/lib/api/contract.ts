@@ -207,7 +207,6 @@ export interface TenantBusiness {
 }
 
 export interface TenantChannels {
-  telegram: { configured: boolean; admin_chat_id: string };
   whatsapp: { enabled: boolean; provider: string; number: string; admin_contact_id: string };
   websocket: { enabled: boolean };
 }
@@ -268,54 +267,19 @@ export interface CreateTenantServiceInput {
 
 export type UpdateTenantServiceInput = Partial<CreateTenantServiceInput>;
 
-// ── Telegram ──────────────────────────────────────────────────────────────
-export type TelegramOnboardingStatus =
-  | "missing_token" | "waiting_for_chat" | "connected";
-
-export interface TelegramOnboardingState {
-  status: TelegramOnboardingStatus;
-  configured: boolean;
-  has_bot_token: boolean;
-  has_admin_chat_id: boolean;
-  masked_bot_token: string;
-  admin_chat_id: string;
-  connect_code: string;
-  connect_command: string;
-  connect_code_expires_at: string;
-  botfather_url: string;
-  prefilled_command: string;
-  suggested_bot_name: string;
-  suggested_bot_username: string;
-  setup_steps: string[];
-  token_help: { label: string; placeholder: string };
-  chat_id_help: { command: string; instructions: string };
-}
-
 // ── WhatsApp ──────────────────────────────────────────────────────────────
-export type WhatsappRuntimeStatusName =
-  | "not_started" | "connecting" | "pairing_code_ready" | "connected"
-  | "disconnected" | "logged_out" | "error";
-
 export type WhatsappOnboardingStatus =
-  | "not_configured" | "waiting_for_pairing" | "reconnecting"
-  | "connected" | "disconnected" | "error";
+  | "not_configured" | "connected" | "disconnected" | "error";
 
 export interface WhatsappOnboardingState {
   status: WhatsappOnboardingStatus;
   configured: boolean;
   enabled: boolean;
   bot_enabled: boolean;
-  provider: "baileys" | "meta";
+  provider: "meta";
   number: string;
-  admin_contact_id: string;
-  pairing_code: string;
-  auth_dir: string;
-  auth_state_registered: boolean;
   connected: boolean;
-  runtime_status: WhatsappRuntimeStatusName;
   last_error: string;
-  setup_steps: string[];
-  number_help: { label: string; placeholder: string; instructions: string };
   bot_allowed_contacts?: string[];
   bot_blocked_contacts?: string[];
 }

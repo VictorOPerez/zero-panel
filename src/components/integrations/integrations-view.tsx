@@ -4,16 +4,15 @@ import Link from "next/link";
 import { Calendar } from "lucide-react";
 import { PageShell } from "@/components/panel/page-shell";
 import { RequireTenant } from "@/components/panel/require-tenant";
-import { WhatsappCard } from "@/components/channels/whatsapp-card";
-import { TelegramCard } from "@/components/channels/telegram-card";
+import { WhatsappBusinessCard } from "@/components/channels/whatsapp-business-card";
 
 export function IntegrationsView() {
   return (
     <RequireTenant>
       {(tenantId) => (
         <PageShell
-          title="Canales"
-          subtitle="Conectá los canales de mensajería que usa tu negocio."
+          title="Conexiones"
+          subtitle="Conectá WhatsApp Business y Google Calendar para que el bot opere."
         >
           <div
             className="grid-integrations"
@@ -21,8 +20,7 @@ export function IntegrationsView() {
             role="list"
             aria-label="Canales"
           >
-            <WhatsappCard tenantId={tenantId} />
-            <TelegramCard tenantId={tenantId} />
+            <WhatsappBusinessCard tenantId={tenantId} />
           </div>
 
           <div

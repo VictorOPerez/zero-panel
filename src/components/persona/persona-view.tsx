@@ -17,7 +17,6 @@ import type {
 
 const CHANNELS: { id: MessageSource; label: string }[] = [
   { id: "whatsapp", label: "WhatsApp" },
-  { id: "telegram", label: "Telegram" },
   { id: "websocket", label: "WebSocket" },
 ];
 
@@ -57,22 +56,6 @@ const DESCRIPTION_MAX = 500;
 const RULES_MAX_COUNT = 5;
 const RULE_MAX_LENGTH = 120;
 
-// Zonas horarias comunes para el mercado LATAM + algunas globales.
-// Evita que el cliente tipee mal el IANA name y rompa todo.
-const TIMEZONES = [
-  "America/Argentina/Buenos_Aires",
-  "America/Montevideo",
-  "America/Santiago",
-  "America/Sao_Paulo",
-  "America/Bogota",
-  "America/Lima",
-  "America/Mexico_City",
-  "America/New_York",
-  "America/Los_Angeles",
-  "Europe/Madrid",
-  "UTC",
-];
-
 type WorkingDay = { enabled: boolean; open: string; close: string };
 
 const DEFAULT_DAY: WorkingDay = { enabled: false, open: "09:00", close: "18:00" };
@@ -94,7 +77,6 @@ function PersonaEditor({ tenantId }: { tenantId: string }) {
   const [language, setLanguage] = useState("es");
   const [description, setDescription] = useState("");
   const [rules, setRules] = useState<string[]>([]);
-  const [timezone, setTimezone] = useState("America/Argentina/Buenos_Aires");
   const [typingSimulation, setTypingSimulation] = useState(true);
   const [hideAiIdentity, setHideAiIdentity] = useState(false);
   const [hours, setHours] = useState<Record<TenantBusinessHoursWeekday, WorkingDay>>(
@@ -113,7 +95,6 @@ function PersonaEditor({ tenantId }: { tenantId: string }) {
     setLanguage(persona.language || "es");
     setDescription((persona.system_prompt_extra ?? "").slice(0, DESCRIPTION_MAX));
     setRules((persona.rules ?? []).slice(0, RULES_MAX_COUNT));
-    setTimezone(persona.behavior?.timezone ?? "America/Argentina/Buenos_Aires");
     setTypingSimulation(persona.behavior?.typing_simulation ?? true);
     setHideAiIdentity(persona.behavior?.hide_ai_identity ?? false);
 
@@ -168,7 +149,6 @@ function PersonaEditor({ tenantId }: { tenantId: string }) {
       system_prompt_extra: description.trim().slice(0, DESCRIPTION_MAX),
       rules: cleanRules,
       behavior: {
-        timezone,
         typing_simulation: typingSimulation,
         hide_ai_identity: hideAiIdentity,
         business_hours: businessHoursForSave,
@@ -395,22 +375,6 @@ function PersonaEditor({ tenantId }: { tenantId: string }) {
           <section style={sectionStyle}>
             <SectionTitle>Comportamiento</SectionTitle>
             <SectionHint>Detalles finos de cómo se siente la conversación.</SectionHint>
-            <Field label="Zona horaria">
-              <select
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-                style={{ ...inputStyle, fontFamily: "inherit" }}
-              >
-                {TIMEZONES.map((tz) => (
-                  <option key={tz} value={tz}>
-                    {tz}
-                  </option>
-                ))}
-                {!TIMEZONES.includes(timezone) && (
-                  <option value={timezone}>{timezone}</option>
-                )}
-              </select>
-            </Field>
             <Toggle
               label="Simular que está escribiendo"
               description="Muestra 'escribiendo…' antes de responder, parece más humano."

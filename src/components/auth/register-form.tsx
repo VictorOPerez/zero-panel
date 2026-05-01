@@ -13,19 +13,13 @@ import {
   authPrimaryButtonStyle,
 } from "./auth-shell";
 
-const TIMEZONES = [
-  "America/Argentina/Buenos_Aires",
-  "America/Argentina/Cordoba",
-  "America/Santiago",
-  "America/Montevideo",
-  "America/Sao_Paulo",
-  "America/Mexico_City",
-  "America/Bogota",
-  "America/Lima",
-  "America/Caracas",
-  "Europe/Madrid",
-  "Europe/London",
-];
+// La zona horaria se infiere automaticamente del browser para no exponerla
+// en la UI; si el usuario conecta Google Calendar mas tarde, el backend la
+// reemplaza con calendar.timeZone.
+function detectBrowserTimezone(): string {
+  if (typeof Intl === "undefined") return "UTC";
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
 
 export function RegisterForm() {
   const router = useRouter();
@@ -33,11 +27,6 @@ export function RegisterForm() {
   const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [timezone, setTimezone] = useState(
-    typeof Intl !== "undefined"
-      ? Intl.DateTimeFormat().resolvedOptions().timeZone || TIMEZONES[0]
-      : TIMEZONES[0]
-  );
   const [locale] = useState("es-AR");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -69,7 +58,7 @@ export function RegisterForm() {
         business_name: businessName.trim(),
         email: email.trim(),
         password,
-        timezone,
+        timezone: detectBrowserTimezone(),
         locale,
       });
       // Importante: NO guardamos la sesión todavía. El backend ahora exige
@@ -230,25 +219,9 @@ export function RegisterForm() {
         )}
       </div>
 
-      <div>
-        <label htmlFor="timezone" style={authLabelStyle}>Zona horaria</label>
-        <select
-          id="timezone"
-          value={timezone}
-          onChange={(e) => setTimezone(e.target.value)}
-          style={{ ...authInputStyle, appearance: "none", paddingRight: 30 }}
-        >
-          {TIMEZONES.map((tz) => (
-            <option key={tz} value={tz} style={{ background: "var(--bg-1)" }}>
-              {tz}
-            </option>
-          ))}
-        </select>
-      </div>
-
       <div style={authInfoBoxStyle}>
         Al crear tu cuenta arrancás en <strong style={{ color: "var(--text-0)" }}>trial</strong>
-        {" "}sin tarjeta de crédito. Incluye conexión de WhatsApp, Telegram y calendario.
+        {" "}sin tarjeta de crédito. Incluye conexión de WhatsApp Business y Google Calendar.
       </div>
 
       <button

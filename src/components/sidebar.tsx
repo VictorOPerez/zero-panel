@@ -6,39 +6,22 @@ import { useEffect } from "react";
 import {
   Inbox,
   Plug,
-  BarChart2,
   LogOut,
-  CalendarClock,
   CreditCard,
-  LayoutDashboard,
-  ListChecks,
-  MessagesSquare,
   Sparkles,
-  Clipboard,
-  Calendar,
-  Building2,
 } from "lucide-react";
 import { IconDot } from "@/components/icons";
 import { useAuthStore } from "@/store/auth";
 
 const NAV_ITEMS = [
-  { key: "overview", label: "Resumen", href: "/overview", icon: LayoutDashboard },
   { key: "inbox", label: "Inbox", href: "/inbox", icon: Inbox, badge: 14 },
-  { key: "sandbox", label: "Sandbox", href: "/sandbox", icon: MessagesSquare },
-  { key: "persona", label: "Persona", href: "/persona", icon: Sparkles },
-  { key: "business", label: "Negocio", href: "/business", icon: Building2 },
-  { key: "services", label: "Servicios", href: "/services", icon: ListChecks },
-  { key: "bookings", label: "Reservas", href: "/bookings", icon: CalendarClock },
-  { key: "requests", label: "Solicitudes", href: "/requests", icon: Clipboard },
-  { key: "integrations", label: "Canales", href: "/integrations", icon: Plug },
-  { key: "calendar", label: "Calendario", href: "/calendar", icon: Calendar },
-  { key: "analytics", label: "Analytics", href: "/analytics", icon: BarChart2 },
-  { key: "billing", label: "Facturación", href: "/billing", icon: CreditCard },
+  { key: "integrations", label: "Conexiones", href: "/integrations", icon: Plug },
+  { key: "bot", label: "Bot", href: "/bot", icon: Sparkles },
+  { key: "billing", label: "Pagos", href: "/billing", icon: CreditCard },
 ] as const;
 
 const CHANNELS = [
   { key: "wa", label: "WhatsApp", color: "#25D366", active: true, count: 0 },
-  { key: "tg", label: "Telegram", color: "#3AA5EA", active: true, count: 0 },
 ];
 
 export function Sidebar() {

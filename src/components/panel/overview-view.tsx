@@ -149,12 +149,6 @@ function OverviewContent({ tenantId }: { tenantId: string }) {
             href="/integrations"
           />
           <ChannelRow
-            name="Telegram"
-            connected={Boolean(tenant?.channels.telegram.configured)}
-            detail={tenant?.channels.telegram.admin_chat_id || "sin chat admin"}
-            href="/integrations"
-          />
-          <ChannelRow
             name="Websocket"
             connected={Boolean(tenant?.channels.websocket.enabled)}
             detail={tenant?.channels.websocket.enabled ? "habilitado" : "deshabilitado"}
@@ -171,7 +165,7 @@ function OverviewContent({ tenantId }: { tenantId: string }) {
             subtitle="Sandbox chat con trace_id y typing_ms"
           />
           <QuickAction
-            href="/persona"
+            href="/bot"
             icon={<Zap size={16} />}
             title="Editar persona"
             subtitle="Tono, idioma, horarios por canal"

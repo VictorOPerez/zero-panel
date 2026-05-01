@@ -1,7 +1,7 @@
 import { PersonaView } from "@/components/persona/persona-view";
 
-export const metadata = { title: "Persona — Zero" };
+export const metadata = { title: "Bot — Zero" };
 
-export default function PersonaPage() {
+export default function BotPage() {
   return <PersonaView />;
 }

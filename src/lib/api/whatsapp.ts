@@ -1,50 +1,13 @@
 import { api } from "./client";
 import type { WhatsappOnboardingState } from "./contract";
 
-// Todas las rutas del backend responden { ok, whatsapp: WhatsappOnboardingState }.
-// El client global ya desenvuelve el envelope { ok, data }, así que acá solo nos
-// queda sacar el .whatsapp y devolver el state "plano" al caller.
+// Endpoints agnosticos del transporte (sirven para Baileys legacy y para
+// la futura integracion con WhatsApp Cloud API).
 
 type OnboardingResponse = { whatsapp: WhatsappOnboardingState };
 
 function unwrap(res: OnboardingResponse): WhatsappOnboardingState {
   return res.whatsapp;
-}
-
-export function getWhatsappOnboarding(tenantId: string): Promise<WhatsappOnboardingState> {
-  return api
-    .get<OnboardingResponse>(
-      `/api/admin/tenants/${encodeURIComponent(tenantId)}/whatsapp/onboarding`
-    )
-    .then(unwrap);
-}
-
-export function requestPairingCode(
-  tenantId: string,
-  body: { number: string; force?: boolean; pairing_timeout_ms?: number }
-): Promise<WhatsappOnboardingState> {
-  return api
-    .post<OnboardingResponse>(
-      `/api/admin/tenants/${encodeURIComponent(tenantId)}/whatsapp/pairing-code`,
-      body
-    )
-    .then(unwrap);
-}
-
-export function resetWhatsapp(tenantId: string): Promise<WhatsappOnboardingState> {
-  return api
-    .post<OnboardingResponse>(
-      `/api/admin/tenants/${encodeURIComponent(tenantId)}/whatsapp/reset`
-    )
-    .then(unwrap);
-}
-
-export function reconnectWhatsapp(tenantId: string): Promise<WhatsappOnboardingState> {
-  return api
-    .post<OnboardingResponse>(
-      `/api/admin/tenants/${encodeURIComponent(tenantId)}/whatsapp/reconnect`
-    )
-    .then(unwrap);
 }
 
 export function setWhatsappBotEnabled(
