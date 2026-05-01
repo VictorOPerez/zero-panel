@@ -207,7 +207,15 @@ export interface TenantBusiness {
 }
 
 export interface TenantChannels {
-  whatsapp: { enabled: boolean; provider: string; number: string; admin_contact_id: string };
+  whatsapp: {
+    enabled: boolean;
+    bot_enabled?: boolean;
+    provider: string;
+    number: string;
+    admin_contact_id: string;
+    wa_cloud_phone_number_id?: string;
+    wa_cloud_waba_id?: string;
+  };
   websocket: { enabled: boolean };
 }
 

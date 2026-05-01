@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Loader2, MessageCircle, X } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, Loader2, MessageCircle, Power, X } from "lucide-react";
 import { api } from "@/lib/api/client";
+import { getTenant } from "@/lib/api/tenants";
+import { setWhatsappBotEnabled } from "@/lib/api/whatsapp";
 
 // Tipos minimos del SDK de Facebook (no hay @types oficial completo)
 declare global {
@@ -51,7 +54,6 @@ const ES_CONFIG_ID = process.env.NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID ?? "
 
 interface Props {
   tenantId: string;
-  initialPhoneNumberId?: string;
   onConnected?: () => void;
 }
 
@@ -64,18 +66,62 @@ type State =
   | { kind: "connected"; phoneNumberId: string; wabaId?: string }
   | { kind: "error"; message: string };
 
-export function WhatsappBusinessCard({ tenantId, initialPhoneNumberId, onConnected }: Props) {
+export function WhatsappBusinessCard({ tenantId, onConnected }: Props) {
+  const qc = useQueryClient();
+
+  // Hidratamos el estado desde la DB al montar — asi un refresh de pagina
+  // no pierde el "conectado" entre sesiones. La query es la misma key que usa
+  // BusinessQuickEdit en IntegrationsView, asi que React Query la dedupe.
+  const tenantQuery = useQuery({
+    queryKey: ["tenant", tenantId],
+    queryFn: () => getTenant(tenantId).then((r) => r.tenant),
+  });
+  const waConfig = tenantQuery.data?.channels?.whatsapp;
+  const persistedPhoneId = waConfig?.wa_cloud_phone_number_id ?? "";
+  const persistedWabaId = waConfig?.wa_cloud_waba_id ?? "";
+  const persistedBotEnabled = waConfig?.bot_enabled ?? true;
+
   const [state, setState] = useState<State>(
-    initialPhoneNumberId
-      ? { kind: "connected", phoneNumberId: initialPhoneNumberId }
-      : FB_APP_ID && ES_CONFIG_ID
-        ? { kind: "idle" }
-        : {
-            kind: "error",
-            message:
-              "Falta NEXT_PUBLIC_META_FB_APP_ID o NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID en el frontend.",
-          }
+    FB_APP_ID && ES_CONFIG_ID
+      ? { kind: "idle" }
+      : {
+          kind: "error",
+          message:
+            "Falta NEXT_PUBLIC_META_FB_APP_ID o NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID en el frontend.",
+        }
   );
+
+  // Cuando llegan datos de la DB y todavia no estamos en un flujo activo
+  // (popup_open / exchanging), reflejamos el estado real.
+  useEffect(() => {
+    if (!tenantQuery.isSuccess) return;
+    if (
+      state.kind === "popup_open" ||
+      state.kind === "exchanging" ||
+      state.kind === "loading_sdk"
+    ) {
+      return;
+    }
+    if (persistedPhoneId) {
+      setState({
+        kind: "connected",
+        phoneNumberId: persistedPhoneId,
+        wabaId: persistedWabaId || undefined,
+      });
+    } else if (state.kind === "connected") {
+      // DB dice que no esta conectado pero el state local si — desconexion
+      // ocurrida en otra pestaña. Volvemos a idle.
+      setState({ kind: "idle" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantQuery.isSuccess, persistedPhoneId, persistedWabaId]);
+
+  const botToggle = useMutation({
+    mutationFn: (next: boolean) => setWhatsappBotEnabled(tenantId, next),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tenant", tenantId] });
+    },
+  });
 
   // Captura del payload session_info del Embedded Signup. Llega via window.postMessage
   // desde el iframe de Meta y trae phone_number_id + waba_id + business_id.
@@ -221,6 +267,8 @@ export function WhatsappBusinessCard({ tenantId, initialPhoneNumberId, onConnect
         phoneNumberId: result.whatsapp.phone_number_id,
         wabaId: result.whatsapp.waba_id,
       });
+      // Refrescar el tenant cache asi el card persiste "conectado" entre refreshes.
+      qc.invalidateQueries({ queryKey: ["tenant", tenantId] });
       onConnected?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -229,6 +277,14 @@ export function WhatsappBusinessCard({ tenantId, initialPhoneNumberId, onConnect
   }
 
   async function onDisconnect() {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "¿Desconectar WhatsApp? Vas a perder la conexión con Meta y el bot dejará de recibir mensajes hasta que vuelvas a conectar."
+      )
+    ) {
+      return;
+    }
     try {
       await api.post(
         `/api/admin/tenants/${encodeURIComponent(tenantId)}/whatsapp-cloud/disconnect`,
@@ -236,6 +292,7 @@ export function WhatsappBusinessCard({ tenantId, initialPhoneNumberId, onConnect
       );
       sessionInfoRef.current = null;
       setState({ kind: "idle" });
+      qc.invalidateQueries({ queryKey: ["tenant", tenantId] });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setState({ kind: "error", message });
@@ -306,6 +363,83 @@ export function WhatsappBusinessCard({ tenantId, initialPhoneNumberId, onConnect
               </>
             )}
           </div>
+
+          {/* Toggle Bot ON/OFF */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              padding: "10px 12px",
+              borderRadius: 8,
+              border: "1px solid var(--hair)",
+              background: "rgba(255,255,255,0.02)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <Power
+                size={14}
+                style={{
+                  color: persistedBotEnabled
+                    ? "var(--z-green, #25D366)"
+                    : "var(--text-3)",
+                }}
+              />
+              <div>
+                <div style={{ fontSize: 12.5, fontWeight: 600 }}>
+                  {persistedBotEnabled ? "Bot activo" : "Bot pausado"}
+                </div>
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    color: "var(--text-3)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                  }}
+                >
+                  {persistedBotEnabled
+                    ? "Responde automáticamente a los clientes"
+                    : "No responde — los mensajes igual llegan al inbox"}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={persistedBotEnabled}
+              disabled={botToggle.isPending}
+              onClick={() => botToggle.mutate(!persistedBotEnabled)}
+              style={{
+                position: "relative",
+                width: 38,
+                height: 22,
+                borderRadius: 999,
+                border: "none",
+                background: persistedBotEnabled
+                  ? "var(--z-green, #25D366)"
+                  : "rgba(255,255,255,0.12)",
+                cursor: botToggle.isPending ? "wait" : "pointer",
+                transition: "background 0.15s",
+                flexShrink: 0,
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  top: 2,
+                  left: persistedBotEnabled ? 18 : 2,
+                  width: 18,
+                  height: 18,
+                  borderRadius: "50%",
+                  background: "#fff",
+                  transition: "left 0.15s",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+                }}
+              />
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={onDisconnect}
@@ -323,7 +457,7 @@ export function WhatsappBusinessCard({ tenantId, initialPhoneNumberId, onConnect
               gap: 6,
             }}
           >
-            <X size={12} /> Desconectar
+            <X size={12} /> Desconectar de Meta
           </button>
         </>
       ) : (
