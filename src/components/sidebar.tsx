@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import {
   Inbox,
-  Plug,
+  Home,
   LogOut,
   CreditCard,
   Sparkles,
@@ -14,8 +14,8 @@ import { IconDot } from "@/components/icons";
 import { useAuthStore } from "@/store/auth";
 
 const NAV_ITEMS = [
+  { key: "integrations", label: "Inicio", href: "/integrations", icon: Home },
   { key: "inbox", label: "Inbox", href: "/inbox", icon: Inbox, badge: 14 },
-  { key: "integrations", label: "Conexiones", href: "/integrations", icon: Plug },
   { key: "bot", label: "Bot", href: "/bot", icon: Sparkles },
   { key: "billing", label: "Pagos", href: "/billing", icon: CreditCard },
 ] as const;
@@ -39,7 +39,8 @@ export function Sidebar() {
   }, [hydrated, hydrate]);
 
   const isActive = (href: string) => {
-    if (href === "/overview") return pathname === "/overview" || pathname === "/";
+    if (href === "/integrations")
+      return pathname === "/" || pathname.startsWith("/integrations");
     return pathname.startsWith(href);
   };
 
