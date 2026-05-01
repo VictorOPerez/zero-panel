@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Calendar, Check, Loader2 } from "lucide-react";
 import { PageShell, cardStyle } from "@/components/panel/page-shell";
 import { RequireTenant } from "@/components/panel/require-tenant";
-import { WhatsappBusinessCard } from "@/components/channels/whatsapp-business-card";
+import { WhatsappYCloudCard } from "@/components/channels/whatsapp-ycloud-card";
 import { getTenant, patchTenant } from "@/lib/api/tenants";
 import type { TenantBusiness } from "@/lib/api/contract";
 
@@ -27,7 +27,7 @@ export function IntegrationsView() {
             role="list"
             aria-label="Canales"
           >
-            <WhatsappBusinessCard tenantId={tenantId} />
+            <WhatsappYCloudCard tenantId={tenantId} />
           </div>
 
           <div className="grid-integrations">
