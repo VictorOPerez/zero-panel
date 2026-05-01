@@ -215,6 +215,8 @@ export interface TenantChannels {
     admin_contact_id: string;
     wa_cloud_phone_number_id?: string;
     wa_cloud_waba_id?: string;
+    bot_blocked_contacts?: string[];
+    bot_allowed_contacts?: string[];
   };
   websocket: { enabled: boolean };
 }

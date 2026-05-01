@@ -6,6 +6,7 @@ import { CheckCircle2, Loader2, MessageCircle, Power, X } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { getTenant } from "@/lib/api/tenants";
 import { setWhatsappBotEnabled } from "@/lib/api/whatsapp";
+import { WhatsappBlockedContacts } from "./whatsapp-blocked-contacts";
 
 // Tipos minimos del SDK de Facebook (no hay @types oficial completo)
 declare global {
@@ -80,6 +81,7 @@ export function WhatsappBusinessCard({ tenantId, onConnected }: Props) {
   const persistedPhoneId = waConfig?.wa_cloud_phone_number_id ?? "";
   const persistedWabaId = waConfig?.wa_cloud_waba_id ?? "";
   const persistedBotEnabled = waConfig?.bot_enabled ?? true;
+  const persistedBlockedContacts = waConfig?.bot_blocked_contacts ?? [];
 
   const [state, setState] = useState<State>(
     FB_APP_ID && ES_CONFIG_ID
@@ -439,6 +441,11 @@ export function WhatsappBusinessCard({ tenantId, onConnected }: Props) {
               />
             </button>
           </div>
+
+          <WhatsappBlockedContacts
+            tenantId={tenantId}
+            current={persistedBlockedContacts}
+          />
 
           <button
             type="button"

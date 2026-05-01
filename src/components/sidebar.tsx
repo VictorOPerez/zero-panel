@@ -8,6 +8,7 @@ import {
   Home,
   LogOut,
   CreditCard,
+  Settings,
   Sparkles,
 } from "lucide-react";
 import { IconDot } from "@/components/icons";
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
   { key: "inbox", label: "Inbox", href: "/inbox", icon: Inbox, badge: 14 },
   { key: "bot", label: "Bot", href: "/bot", icon: Sparkles },
   { key: "billing", label: "Pagos", href: "/billing", icon: CreditCard },
+  { key: "settings", label: "Configuración", href: "/settings", icon: Settings },
 ] as const;
 
 const CHANNELS = [
