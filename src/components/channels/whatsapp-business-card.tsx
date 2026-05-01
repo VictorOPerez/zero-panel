@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Loader2, MessageCircle, X } from "lucide-react";
 import { api } from "@/lib/api/client";
 
@@ -79,7 +79,15 @@ export function WhatsappBusinessCard({ tenantId, initialPhoneNumberId, onConnect
 
   // Captura del payload session_info del Embedded Signup. Llega via window.postMessage
   // desde el iframe de Meta y trae phone_number_id + waba_id + business_id.
-  const [sessionInfo, setSessionInfo] = useState<EmbeddedSignupSessionData["data"] | null>(null);
+  // Usamos ref (no state) porque el handler corre fuera del ciclo de render —
+  // el while loop dentro de onConnect leeria un valor stale de la closure si
+  // usaramos useState. Con ref podemos leer el valor mas reciente sincronamente.
+  const sessionInfoRef = useRef<EmbeddedSignupSessionData["data"] | null>(null);
+  // Se setea por onConnect cuando empieza a esperar el FINISH; el listener lo
+  // resuelve apenas llega el postMessage para no perder ms.
+  const sessionInfoResolverRef = useRef<
+    ((data: EmbeddedSignupSessionData["data"] | null) => void) | null
+  >(null);
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
@@ -92,10 +100,16 @@ export function WhatsappBusinessCard({ tenantId, initialPhoneNumberId, onConnect
         const parsed = JSON.parse(event.data) as EmbeddedSignupSessionData;
         if (parsed.type !== "WA_EMBEDDED_SIGNUP") return;
         if (parsed.event === "FINISH" && parsed.data) {
-          setSessionInfo(parsed.data);
+          sessionInfoRef.current = parsed.data;
+          sessionInfoResolverRef.current?.(parsed.data);
+          sessionInfoResolverRef.current = null;
         } else if (parsed.event === "CANCEL") {
+          sessionInfoResolverRef.current?.(null);
+          sessionInfoResolverRef.current = null;
           setState({ kind: "ready" });
         } else if (parsed.event === "ERROR") {
+          sessionInfoResolverRef.current?.(null);
+          sessionInfoResolverRef.current = null;
           setState({ kind: "error", message: "Meta reporto un error en el flujo." });
         }
       } catch {
@@ -162,13 +176,32 @@ export function WhatsappBusinessCard({ tenantId, initialPhoneNumberId, onConnect
         return;
       }
 
-      // Esperamos a que llegue el session_info por postMessage. Si en 5s no
-      // llego, mandamos el code igual y el backend resuelve sin phone_number_id
-      // (fallara hasta que Meta lo entregue).
-      let attempts = 0;
-      while (!sessionInfo && attempts < 50) {
-        await new Promise((r) => setTimeout(r, 100));
-        attempts++;
+      // Esperamos al session_info por postMessage. Resolvemos via ref+promise
+      // para no leer state stale de la closure. El postMessage suele llegar
+      // antes de que FB.login retorne — chequeamos primero el ref por si ya
+      // esta seteado, sino esperamos hasta 10s.
+      let info = sessionInfoRef.current;
+      if (!info) {
+        info = await new Promise<EmbeddedSignupSessionData["data"] | null>(
+          (resolve) => {
+            sessionInfoResolverRef.current = resolve;
+            window.setTimeout(() => {
+              if (sessionInfoResolverRef.current === resolve) {
+                sessionInfoResolverRef.current = null;
+                resolve(sessionInfoRef.current);
+              }
+            }, 10_000);
+          }
+        );
+      }
+
+      if (!info?.phone_number_id) {
+        setState({
+          kind: "error",
+          message:
+            "Meta no devolvio el phone_number_id. Probablemente cancelaste el flujo o no completaste todos los pasos.",
+        });
+        return;
       }
 
       setState({ kind: "exchanging" });
@@ -178,9 +211,9 @@ export function WhatsappBusinessCard({ tenantId, initialPhoneNumberId, onConnect
         whatsapp: { connected: boolean; phone_number_id: string; waba_id?: string };
       }>(`/api/admin/tenants/${encodeURIComponent(tenantId)}/whatsapp-cloud/onboard`, {
         code,
-        phone_number_id: sessionInfo?.phone_number_id ?? "",
-        waba_id: sessionInfo?.waba_id ?? "",
-        business_id: sessionInfo?.business_id ?? "",
+        phone_number_id: info.phone_number_id,
+        waba_id: info.waba_id ?? "",
+        business_id: info.business_id ?? "",
       });
 
       setState({
@@ -201,7 +234,7 @@ export function WhatsappBusinessCard({ tenantId, initialPhoneNumberId, onConnect
         `/api/admin/tenants/${encodeURIComponent(tenantId)}/whatsapp-cloud/disconnect`,
         {}
       );
-      setSessionInfo(null);
+      sessionInfoRef.current = null;
       setState({ kind: "idle" });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
