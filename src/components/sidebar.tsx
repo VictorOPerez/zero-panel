@@ -12,6 +12,7 @@ import {
   Sparkles,
   BookOpen,
   Wallet,
+  Users,
 } from "lucide-react";
 import { IconDot } from "@/components/icons";
 import { useAuthStore } from "@/store/auth";
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { key: "inbox", label: "Inbox", href: "/inbox", icon: Inbox, badge: 14 },
   { key: "bot", label: "Bot", href: "/bot", icon: Sparkles },
   { key: "knowledge", label: "Conocimiento", href: "/knowledge", icon: BookOpen },
+  { key: "crm", label: "Contactos", href: "/crm", icon: Users },
   { key: "payments", label: "Cobros", href: "/payments", icon: Wallet },
   { key: "billing", label: "Suscripción", href: "/billing", icon: CreditCard },
   { key: "settings", label: "Configuración", href: "/settings", icon: Settings },
