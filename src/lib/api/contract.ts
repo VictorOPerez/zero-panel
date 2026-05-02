@@ -280,6 +280,53 @@ export interface CreateTenantServiceInput {
 
 export type UpdateTenantServiceInput = Partial<CreateTenantServiceInput>;
 
+// ── Knowledge base (RAG por tenant) ───────────────────────────────────────
+export type KnowledgeDocumentType = "pdf" | "url" | "text";
+export type KnowledgeDocumentStatus = "pending" | "ready" | "error";
+
+export interface KnowledgeDocument {
+  id: string;
+  tenant_id: string;
+  type: KnowledgeDocumentType;
+  title: string;
+  source: string | null;
+  content_preview: string | null;
+  chunk_count: number;
+  status: KnowledgeDocumentStatus;
+  error: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface CreateKnowledgeDocumentInput {
+  type: KnowledgeDocumentType;
+  title: string;
+  source?: string | null;
+  // Texto plano ya extraído. Para PDF/URL el frontend hace la extracción
+  // (o el backend en una iteración posterior) — el endpoint actual
+  // recibe siempre el contenido.
+  content: string;
+}
+
+export interface CreateKnowledgeDocumentResponse {
+  ok: true;
+  document: KnowledgeDocument;
+  chunks: number;
+  embedded: number;
+  pages?: number;
+}
+
+export interface IngestUrlInput {
+  url: string;
+  title?: string;
+}
+
+export interface IngestPdfInput {
+  title: string;
+  source?: string | null;
+  content_base64: string;
+}
+
 // ── WhatsApp ──────────────────────────────────────────────────────────────
 export type WhatsappOnboardingStatus =
   | "not_configured" | "connected" | "disconnected" | "error";
