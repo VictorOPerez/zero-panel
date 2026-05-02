@@ -14,6 +14,8 @@ import {
   Wallet,
   Users,
   CalendarClock,
+  Package,
+  ShoppingBag,
 } from "lucide-react";
 import { IconDot } from "@/components/icons";
 import { useAuthStore } from "@/store/auth";
@@ -25,6 +27,8 @@ const NAV_ITEMS = [
   { key: "knowledge", label: "Conocimiento", href: "/knowledge", icon: BookOpen },
   { key: "crm", label: "Contactos", href: "/crm", icon: Users },
   { key: "followups", label: "Followups", href: "/followups", icon: CalendarClock },
+  { key: "products", label: "Productos", href: "/products", icon: Package },
+  { key: "orders", label: "Pedidos", href: "/orders", icon: ShoppingBag },
   { key: "payments", label: "Cobros", href: "/payments", icon: Wallet },
   { key: "billing", label: "Suscripción", href: "/billing", icon: CreditCard },
   { key: "settings", label: "Configuración", href: "/settings", icon: Settings },
