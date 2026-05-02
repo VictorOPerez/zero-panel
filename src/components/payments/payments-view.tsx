@@ -21,6 +21,7 @@ import {
 import { ApiError } from "@/lib/api/client";
 import { PageShell, cardStyle } from "@/components/panel/page-shell";
 import { RequireTenant } from "@/components/panel/require-tenant";
+import { useStripeMode } from "@/lib/hooks/use-stripe-mode";
 
 export function PaymentsView() {
   return (
@@ -33,6 +34,7 @@ export function PaymentsView() {
 function PaymentsInner({ tenantId }: { tenantId: string }) {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const { isTest } = useStripeMode();
 
   const statusQuery = useQuery({
     queryKey: ["payments-provider", tenantId],
@@ -120,6 +122,31 @@ function PaymentsInner({ tenantId }: { tenantId: string }) {
       title="Cobros"
       subtitle="Activá pagos por WhatsApp con tarjeta. El dinero llega directo a tu cuenta."
     >
+      {isTest && (
+        <div
+          role="status"
+          style={{
+            padding: "10px 14px",
+            borderRadius: 8,
+            border: "1px solid oklch(0.85 0.18 90 / 0.45)",
+            background: "oklch(0.85 0.18 90 / 0.10)",
+            color: "oklch(0.85 0.18 90)",
+            fontSize: 13,
+            marginBottom: 12,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <strong style={{ letterSpacing: 0.5 }}>MODO TEST</strong>
+          <span style={{ opacity: 0.85 }}>
+            — Stripe está en sandbox. Las cuentas conectadas y los pagos son
+            de prueba (tarjetas test tipo 4242…). NO uses datos personales
+            reales en el onboarding.
+          </span>
+        </div>
+      )}
+
       {error && (
         <div
           role="alert"

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { IconDot } from "@/components/icons";
 import { useAuthStore } from "@/store/auth";
+import { useStripeMode } from "@/lib/hooks/use-stripe-mode";
 
 const NAV_ITEMS = [
   { key: "integrations", label: "Inicio", href: "/integrations", icon: Home },
@@ -47,6 +48,11 @@ export function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const activeTenantId = useAuthStore((s) => s.activeTenantId);
   const logout = useAuthStore((s) => s.logout);
+
+  // Mini-badge global cuando STRIPE_MODE=test en el backend. Aparece al lado
+  // del logo "Zero" para que el operador NUNCA confunda en qué modo está,
+  // independientemente de la página en la que esté navegando.
+  const { isTest: stripeTestMode } = useStripeMode();
 
   useEffect(() => {
     if (!hydrated) hydrate();
@@ -107,6 +113,24 @@ export function Sidebar() {
           0
         </div>
         <div style={{ fontWeight: 600, fontSize: 14, letterSpacing: -0.2 }}>Zero</div>
+        {stripeTestMode && (
+          <div
+            title="STRIPE_MODE=test en el backend — Stripe está en sandbox"
+            style={{
+              fontSize: 9,
+              fontFamily: "var(--font-jetbrains-mono)",
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+              padding: "2px 5px",
+              borderRadius: 4,
+              background: "oklch(0.85 0.18 90 / 0.18)",
+              color: "oklch(0.85 0.18 90)",
+              border: "1px solid oklch(0.85 0.18 90 / 0.4)",
+            }}
+          >
+            TEST
+          </div>
+        )}
         <div
           style={{
             fontSize: 10,

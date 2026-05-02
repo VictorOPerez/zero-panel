@@ -1,5 +1,28 @@
 import { api } from "./client";
 
+// Endpoint público (sin auth) que devuelve el modo (live/test) actual del
+// backend Stripe + la publishable key. Lo consumimos al boot del panel para
+// mostrar un banner "MODO TEST" cuando STRIPE_MODE=test en Railway, así
+// el operador (vos / dueño del tenant) NO confunde una operación de
+// demo con una real.
+export interface StripePublicConfig {
+  mode: "live" | "test";
+  publishable_key: string | null;
+}
+
+export async function getStripePublicConfig(): Promise<StripePublicConfig> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3000";
+  const res = await fetch(`${baseUrl}/api/public/stripe/config`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    // Default conservador: si no podemos leer, asumimos live (no mostramos
+    // banner). El operador igual ve el estado real al onboardear.
+    return { mode: "live", publishable_key: null };
+  }
+  return res.json();
+}
+
 export interface PaymentProvider {
   provider: "stripe";
   account_id: string;
