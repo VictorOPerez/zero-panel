@@ -57,6 +57,37 @@ function PaymentsInner({ tenantId }: { tenantId: string }) {
     }
   }, [tenantId, qc]);
 
+  // Auto-sync defensivo: mientras el provider exista pero NO esté activo,
+  // pollear /payments/sync cada 60s. Cubre los 3 casos donde el sync por
+  // query param no se dispara: webhook account.updated demorado, return_url
+  // mal configurado, o el cliente cierra la pestaña antes del redirect.
+  // Cuando charges_enabled pasa a true, el polling se detiene solo.
+  // Cap defensivo en MAX_ATTEMPTS para no spamear si algo está atascado
+  // de verdad (Stripe rejected, KYC pendiente real, etc).
+  const providerStatusForPolling = statusQuery.data?.provider;
+  const needsActivation =
+    Boolean(providerStatusForPolling) &&
+    providerStatusForPolling?.charges_enabled !== true;
+  useEffect(() => {
+    if (!needsActivation) return;
+    const MAX_ATTEMPTS = 30; // 30 min @ 60s tick — cap razonable
+    let attempts = 0;
+    const tick = setInterval(() => {
+      attempts += 1;
+      syncProvider(tenantId)
+        .then(() =>
+          qc.invalidateQueries({ queryKey: ["payments-provider", tenantId] })
+        )
+        .catch(() => {
+          /* swallow: el próximo tick reintenta */
+        })
+        .finally(() => {
+          if (attempts >= MAX_ATTEMPTS) clearInterval(tick);
+        });
+    }, 60_000);
+    return () => clearInterval(tick);
+  }, [needsActivation, tenantId, qc]);
+
   const connect = useMutation({
     mutationFn: () => connectStripe(tenantId),
     onSuccess: (res) => {
