@@ -3,10 +3,58 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, MessageCircle, Power, X } from "lucide-react";
-import { api } from "@/lib/api/client";
+import { api, ApiError } from "@/lib/api/client";
 import { getTenant } from "@/lib/api/tenants";
 import { setWhatsappBotEnabled } from "@/lib/api/whatsapp";
 import { WhatsappBlockedContacts } from "./whatsapp-blocked-contacts";
+
+// Payload del Embedded Signup persistido en sessionStorage para que ningun
+// fallo post-popup (401 por sesion expirada, redeploy del backend, blip de
+// red) haga perder los datos que Meta ya nos dio. Si algo se rompe entre el
+// popup y la persistencia en DB, el card al re-mount detecta el pending y
+// ofrece "Continuar conexion" sin reabrir el flujo en Meta.
+interface PendingOnboardPayload {
+  code: string;
+  phone_number_id: string;
+  waba_id: string;
+  business_id: string;
+  ts: string;
+}
+
+function pendingKey(tenantId: string): string {
+  return `zero.wa_pending_onboard.${tenantId}`;
+}
+
+function readPending(tenantId: string): PendingOnboardPayload | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(pendingKey(tenantId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PendingOnboardPayload;
+    if (!parsed.code || !parsed.phone_number_id) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writePending(tenantId: string, payload: PendingOnboardPayload): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(pendingKey(tenantId), JSON.stringify(payload));
+  } catch {
+    // sessionStorage puede fallar en modo privado / cuotas — no es fatal
+  }
+}
+
+function clearPending(tenantId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(pendingKey(tenantId));
+  } catch {
+    /* ignore */
+  }
+}
 
 // Tipos minimos del SDK de Facebook (no hay @types oficial completo)
 declare global {
@@ -92,6 +140,16 @@ export function WhatsappBusinessCard({ tenantId, onConnected }: Props) {
             "Falta NEXT_PUBLIC_META_FB_APP_ID o NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID en el frontend.",
         }
   );
+
+  // Si quedo un Embedded Signup a medias (POST fallo, sesion expiro y nos
+  // mandaron a /login, redeploy del backend, blip de red), al re-mount
+  // detectamos el payload en sessionStorage y mostramos un boton para
+  // terminar la conexion sin tener que reabrir el popup de Meta.
+  const [pendingRetry, setPendingRetry] = useState<PendingOnboardPayload | null>(null);
+  useEffect(() => {
+    const p = readPending(tenantId);
+    if (p) setPendingRetry(p);
+  }, [tenantId]);
 
   // Cuando llegan datos de la DB y todavia no estamos en un flujo activo
   // (popup_open / exchanging), reflejamos el estado real.
@@ -252,30 +310,99 @@ export function WhatsappBusinessCard({ tenantId, onConnected }: Props) {
         return;
       }
 
-      setState({ kind: "exchanging" });
-
-      const result = await api.post<{
-        ok: true;
-        whatsapp: { connected: boolean; phone_number_id: string; waba_id?: string };
-      }>(`/api/admin/tenants/${encodeURIComponent(tenantId)}/whatsapp-cloud/onboard`, {
+      // Persistimos en sessionStorage ANTES del POST. Si el POST falla por
+      // 401 (token expirado, sesion redirigida a /login), redeploy del backend,
+      // o blip de red — el payload sigue disponible en el siguiente render
+      // del card via "Continuar conexion guardada". No reabrimos el popup de
+      // Meta nunca: tenemos todo lo que precisamos para reintentar.
+      const payload: PendingOnboardPayload = {
         code,
         phone_number_id: info.phone_number_id,
         waba_id: info.waba_id ?? "",
         business_id: info.business_id ?? "",
-      });
+        ts: new Date().toISOString(),
+      };
+      writePending(tenantId, payload);
 
-      setState({
-        kind: "connected",
-        phoneNumberId: result.whatsapp.phone_number_id,
-        wabaId: result.whatsapp.waba_id,
-      });
-      // Refrescar el tenant cache asi el card persiste "conectado" entre refreshes.
-      qc.invalidateQueries({ queryKey: ["tenant", tenantId] });
-      onConnected?.();
+      setState({ kind: "exchanging" });
+      await submitOnboard(payload);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setState({ kind: "error", message });
     }
+  }
+
+  // Hace el POST a /onboard con retry exponencial para 5xx / 429 / network.
+  // En 401 deja que el cliente API redirija a /login: el payload sigue en
+  // sessionStorage, asi que al volver despues del re-login el card detecta
+  // pending y muestra "Continuar conexion".
+  async function submitOnboard(payload: PendingOnboardPayload): Promise<void> {
+    const maxAttempts = 4;
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const result = await api.post<{
+          ok: true;
+          whatsapp: { connected: boolean; phone_number_id: string; waba_id?: string };
+        }>(`/api/admin/tenants/${encodeURIComponent(tenantId)}/whatsapp-cloud/onboard`, {
+          code: payload.code,
+          phone_number_id: payload.phone_number_id,
+          waba_id: payload.waba_id,
+          business_id: payload.business_id,
+        });
+
+        clearPending(tenantId);
+        setPendingRetry(null);
+        setState({
+          kind: "connected",
+          phoneNumberId: result.whatsapp.phone_number_id,
+          wabaId: result.whatsapp.waba_id,
+        });
+        qc.invalidateQueries({ queryKey: ["tenant", tenantId] });
+        onConnected?.();
+        return;
+      } catch (err) {
+        lastError = err;
+        // 401: el cliente ya redirige a /login. NO limpiamos el pending —
+        // queremos que el card al volver despues del relogin lo detecte.
+        if (err instanceof ApiError && err.status === 401) {
+          setState({
+            kind: "error",
+            message:
+              "Tu sesion expiro. Te llevamos a /login. Al volver, vas a ver el boton para continuar la conexion sin reabrir Meta.",
+          });
+          return;
+        }
+        // 4xx (no 401, no 429): error de validacion / config — no tiene sentido
+        // reintentar. Mantenemos el pending por si el usuario quiere apretar el
+        // boton manualmente.
+        if (
+          err instanceof ApiError &&
+          err.status >= 400 &&
+          err.status < 500 &&
+          err.status !== 429
+        ) {
+          setState({ kind: "error", message: err.message });
+          // Sincronizamos el pendingRetry para que el boton aparezca con
+          // el payload guardado.
+          setPendingRetry(payload);
+          return;
+        }
+        // 5xx, 429, network → retry con backoff (250ms, 750ms, 2s, 5s).
+        if (attempt < maxAttempts - 1) {
+          const delays = [250, 750, 2000, 5000];
+          await new Promise((r) => setTimeout(r, delays[attempt]));
+          continue;
+        }
+      }
+    }
+    // Agotamos retries sin exito. Mantenemos pending para retry manual.
+    const message = lastError instanceof Error ? lastError.message : String(lastError);
+    setPendingRetry(payload);
+    setState({
+      kind: "error",
+      message: `${message} — los datos de Meta estan guardados, podes reintentar.`,
+    });
   }
 
   async function onDisconnect() {
@@ -473,6 +600,71 @@ export function WhatsappBusinessCard({ tenantId, onConnected }: Props) {
             Conectá tu número en segundos con el flujo oficial de Meta. Sin escanear QR ni códigos
             de emparejamiento — abrís Facebook, autorizás y listo.
           </p>
+
+          {pendingRetry && (
+            <div
+              style={{
+                padding: 12,
+                borderRadius: 8,
+                background: "rgba(37, 211, 102, 0.08)",
+                border: "1px solid rgba(37, 211, 102, 0.3)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+              }}
+            >
+              <div style={{ fontSize: 12.5, color: "var(--text-1)", lineHeight: 1.5 }}>
+                Tenés una conexión a medias con Meta del{" "}
+                <strong>{new Date(pendingRetry.ts).toLocaleString()}</strong>. Los datos quedaron
+                guardados — terminá la conexión sin reabrir Facebook.
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setState({ kind: "exchanging" });
+                    await submitOnboard(pendingRetry);
+                  }}
+                  disabled={state.kind === "exchanging"}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    border: "none",
+                    background: "var(--z-green, #25D366)",
+                    color: "#000",
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    cursor: state.kind === "exchanging" ? "wait" : "pointer",
+                  }}
+                >
+                  {state.kind === "exchanging" ? "Conectando…" : "Continuar conexión"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      typeof window !== "undefined" &&
+                      window.confirm("¿Descartar los datos guardados? Vas a tener que rehacer el flujo en Meta.")
+                    ) {
+                      clearPending(tenantId);
+                      setPendingRetry(null);
+                    }
+                  }}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    border: "1px solid var(--hair)",
+                    background: "transparent",
+                    color: "var(--text-2)",
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  Descartar
+                </button>
+              </div>
+            </div>
+          )}
 
           <button
             type="button"
