@@ -12,8 +12,7 @@ import { Check, Clock, AlertCircle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-interface PaymentStatus {
-  ok: true;
+interface PaymentStatusFields {
   tenantName: string;
   amountCents: number;
   currency: string;
@@ -22,19 +21,28 @@ interface PaymentStatus {
   paidAt: string | null;
 }
 
+// El backend usa un hook preSerialization que envuelve {ok:true, ...rest} en
+// {ok:true, data:{...rest}}. Aceptamos AMBOS shapes para ser defensivos:
+// si alguien cambia el hook en el futuro, esta página no se rompe.
+type ApiResponse =
+  | { ok: true; data: PaymentStatusFields }
+  | ({ ok: true } & PaymentStatusFields)
+  | { ok: false };
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3000";
 
 async function fetchPaymentStatus(
   sessionId: string
-): Promise<PaymentStatus | null> {
+): Promise<PaymentStatusFields | null> {
   try {
     const res = await fetch(
       `${API_URL}/api/public/payment-status/${encodeURIComponent(sessionId)}`,
       { cache: "no-store" }
     );
     if (!res.ok) return null;
-    const json = (await res.json()) as PaymentStatus | { ok: false };
-    if (!("ok" in json) || !json.ok) return null;
+    const json = (await res.json()) as ApiResponse;
+    if (!json.ok) return null;
+    if ("data" in json) return json.data;
     return json;
   } catch {
     return null;
