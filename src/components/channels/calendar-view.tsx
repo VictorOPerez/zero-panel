@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Loader2, Unplug } from "lucide-react";
 import {
@@ -20,8 +21,37 @@ export function CalendarView() {
 
 function CalendarInner({ tenantId }: { tenantId: string }) {
   const qc = useQueryClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [oauthPending, setOauthPending] = useState(false);
+
+  // Procesa el query string ?calendar=connected|error&reason=... que setea
+  // el backend al redirigir desde el callback de Google. Muestra un toast
+  // (banner) y limpia la URL para que no quede pegado al refrescar.
+  useEffect(() => {
+    const result = searchParams.get("calendar");
+    if (!result) return;
+    if (result === "connected") {
+      setSuccess("Google Calendar conectado.");
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["calendar-status", tenantId] });
+    } else if (result === "error") {
+      const reason = searchParams.get("reason") ?? "unknown";
+      if (reason === "scope_missing") {
+        setError(
+          "Conectaste tu cuenta pero no diste permiso al calendario. Volvé a conectar y marcá el permiso de Google Calendar."
+        );
+      } else if (reason === "access_denied") {
+        setError("Cancelaste la autorización en Google.");
+      } else {
+        setError(`No pudimos completar la conexión (${reason}).`);
+      }
+      setSuccess(null);
+    }
+    router.replace("/calendar", { scroll: false });
+  }, [searchParams, router, qc, tenantId]);
 
   const statusQuery = useQuery({
     queryKey: ["calendar-status", tenantId],
@@ -100,6 +130,26 @@ function CalendarInner({ tenantId }: { tenantId: string }) {
           }}
         >
           {error}
+        </div>
+      )}
+
+      {success && (
+        <div
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: "1px solid oklch(0.78 0.15 155 / 0.4)",
+            background: "oklch(0.78 0.15 155 / 0.10)",
+            color: "var(--z-green)",
+            fontSize: 12.5,
+            marginBottom: 12,
+          }}
+        >
+          <CheckCircle2 size={14} /> {success}
         </div>
       )}
 
