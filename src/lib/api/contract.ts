@@ -510,6 +510,50 @@ export interface ListAdminAuditFilter {
   offset?: number;
 }
 
+// ── Virtual numbers marketplace (Telnyx + Stripe markup) ──────────────────
+// Reventa de números virtuales. El tenant compra desde el panel, Zero paga al
+// provider (Telnyx) y cobra al tenant via Stripe markup fijo. La activación
+// final en WhatsApp Business la hace el tenant manualmente en business.facebook.com.
+
+export type TenantNumberProvider = "telnyx" | "twilio";
+export type TenantNumberStatus = "purchased" | "pairing" | "active" | "released";
+
+export interface TenantNumber {
+  id: string;
+  tenant_id: string;
+  phone_e164: string;
+  country: string;
+  provider: TenantNumberProvider;
+  provider_number_id: string;
+  provider_cost_cents: number;
+  markup_cents: number;
+  total_monthly_cents: number;
+  currency: string;
+  stripe_subscription_item_id: string | null;
+  forward_to_phone: string | null;
+  status: TenantNumberStatus;
+  paired_waba_id: string | null;
+  purchased_at: string;
+  released_at: string | null;
+}
+
+export interface AvailableNumber {
+  phone_e164: string;
+  country: string;
+  region: string | null;
+  provider_cost_cents: number;
+  markup_cents: number;
+  total_monthly_cents: number;
+  currency: string;
+  capabilities: string[];
+}
+
+export interface BuyNumberInput {
+  phone_e164: string;
+  country: string;
+  forward_to_phone?: string;
+}
+
 // ── Errors ─────────────────────────────────────────────────────────────────
 export type ApiErrorCode =
   | "email_not_verified"
