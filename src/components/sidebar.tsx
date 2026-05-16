@@ -17,6 +17,7 @@ import {
   Package,
   ShoppingBag,
   Briefcase,
+  ShieldUser,
 } from "lucide-react";
 import { IconDot } from "@/components/icons";
 import { useAuthStore } from "@/store/auth";
@@ -33,6 +34,7 @@ const NAV_ITEMS = [
   { key: "products", label: "Productos", href: "/products", icon: Package },
   { key: "orders", label: "Pedidos", href: "/orders", icon: ShoppingBag },
   { key: "payments", label: "Cobros", href: "/payments", icon: Wallet },
+  { key: "admins", label: "Admins WA", href: "/admins", icon: ShieldUser },
   { key: "billing", label: "Suscripción", href: "/billing", icon: CreditCard },
   { key: "settings", label: "Configuración", href: "/settings", icon: Settings },
 ] as const;

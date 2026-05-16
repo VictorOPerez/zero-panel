@@ -449,6 +449,67 @@ export interface SandboxResetResponse {
   reset: true;
 }
 
+// ── Admin Console (admins por WA) ──────────────────────────────────────────
+// Numeros de WhatsApp marcados como administradores del tenant. Conversan
+// con el bot via WA para ejecutar comandos del negocio (stats, citas,
+// contactos). Verificacion 2FA con codigo 6 digitos al primer mensaje.
+
+export type AdminRole = "owner";
+
+export interface AdminUser {
+  id: string;
+  tenant_id: string;
+  phone_e164: string;
+  label: string | null;
+  role: AdminRole;
+  verified_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateAdminInput {
+  phone: string;
+  label?: string;
+}
+
+export interface IssueAdminCodeResponse {
+  verification_code: string;
+  verification_expires_at: string;
+}
+
+export interface CreateAdminResponse extends IssueAdminCodeResponse {
+  admin: AdminUser;
+}
+
+export type AdminAuditResult =
+  | "ok"
+  | "failed"
+  | "denied"
+  | "expired_confirm"
+  | "unverified";
+
+export interface AdminAuditEntry {
+  id: string;
+  tenant_id: string;
+  admin_user_id: string | null;
+  admin_phone: string;
+  action: string;
+  payload: unknown;
+  result: AdminAuditResult;
+  result_detail: unknown;
+  trace_id: string | null;
+  created_at: string;
+}
+
+export interface ListAdminAuditFilter {
+  admin_user_id?: string;
+  action?: string;
+  result?: AdminAuditResult;
+  limit?: number;
+  offset?: number;
+}
+
 // ── Errors ─────────────────────────────────────────────────────────────────
 export type ApiErrorCode =
   | "email_not_verified"
