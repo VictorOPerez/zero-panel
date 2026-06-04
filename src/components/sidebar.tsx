@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   Inbox,
   Home,
@@ -24,17 +24,15 @@ import { IconDot } from "@/components/icons";
 import { useAuthStore } from "@/store/auth";
 import { useStripeMode } from "@/lib/hooks/use-stripe-mode";
 
-const NAV_SECTIONS = [
-  {
-    label: "Esenciales",
-    items: [
-      { key: "inbox", label: "Inbox", href: "/inbox", icon: Inbox, badge: 14 },
-      { key: "brief", label: "Brief", href: "/brief", icon: FileText },
-      { key: "admins", label: "Admins WA", href: "/admins", icon: ShieldUser },
-      { key: "integrations", label: "Conexiones", href: "/integrations", icon: Home },
-      { key: "billing", label: "Suscripcion", href: "/billing", icon: CreditCard },
-    ],
-  },
+const ESSENTIAL_NAV_ITEMS = [
+  { key: "inbox", label: "Inbox", href: "/inbox", icon: Inbox, badge: 14 },
+  { key: "brief", label: "Brief", href: "/brief", icon: FileText },
+  { key: "admins", label: "Admins WA", href: "/admins", icon: ShieldUser },
+  { key: "integrations", label: "Conexiones", href: "/integrations", icon: Home },
+  { key: "billing", label: "Suscripcion", href: "/billing", icon: CreditCard },
+] as const;
+
+const TOOL_MENU_SECTIONS = [
   {
     label: "Operacional",
     items: [
@@ -63,6 +61,7 @@ const CHANNELS = [
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   const hydrated = useAuthStore((s) => s.hydrated);
   const hydrate = useAuthStore((s) => s.hydrate);
@@ -221,90 +220,102 @@ export function Sidebar() {
       <div style={{ height: 20 }} />
 
       <nav
-        style={{ display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", minHeight: 0 }}
+        style={{ display: "flex", flexDirection: "column", gap: 1, overflowY: "auto", minHeight: 0 }}
         aria-label="Navegacion principal"
       >
-        {NAV_SECTIONS.map((section) => (
-          <div key={section.label} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            <div
-              style={{
-                padding: "0 4px 6px",
-                fontSize: 10,
-                textTransform: "uppercase",
-                letterSpacing: "0.12em",
-                color: "var(--text-3)",
-                fontWeight: 600,
-              }}
-            >
-              {section.label}
-            </div>
-            {section.items.map((n) => {
-              const Icon = n.icon;
-              const on = isActive(n.href);
-              return (
-                <Link
-                  key={n.key}
-                  href={n.href}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "7px 8px",
-                    borderRadius: 6,
-                    background: on
-                      ? "linear-gradient(90deg, oklch(0.62 0.22 295 / 0.16), transparent)"
-                      : "transparent",
-                    color: on ? "var(--text-0)" : "var(--text-1)",
-                    textDecoration: "none",
-                    fontSize: 13,
-                    fontWeight: on ? 500 : 400,
-                    position: "relative",
-                    flexShrink: 0,
-                  }}
-                  aria-current={on ? "page" : undefined}
-                >
-                  {on && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: 0,
-                        top: 8,
-                        bottom: 8,
-                        width: 2,
-                        borderRadius: 2,
-                        background: "var(--aurora)",
-                      }}
-                    />
-                  )}
-                  <Icon
-                    size={15}
-                    style={{ color: on ? "var(--z-cyan)" : "var(--text-2)", flexShrink: 0 }}
-                  />
-                  <span className="truncate">{n.label}</span>
-                  {"badge" in n && n.badge && (
-                    <span
-                      style={{
-                        marginLeft: "auto",
-                        fontSize: 10,
-                        fontFamily: "var(--font-jetbrains-mono)",
-                        fontWeight: 600,
-                        color: on ? "#0a0a0f" : "var(--text-0)",
-                        background: on ? "var(--aurora)" : "rgba(255,255,255,0.08)",
-                        padding: "2px 6px",
-                        borderRadius: 4,
-                      }}
-                    >
-                      {n.badge}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
+        <div
+          style={{
+            padding: "0 4px 6px",
+            fontSize: 10,
+            textTransform: "uppercase",
+            letterSpacing: "0.12em",
+            color: "var(--text-3)",
+            fontWeight: 600,
+          }}
+        >
+          Esenciales
+        </div>
+        {ESSENTIAL_NAV_ITEMS.map((n) => (
+          <NavLinkItem key={n.key} item={n} active={isActive(n.href)} />
         ))}
       </nav>
 
       <div style={{ flex: 1, minHeight: 8 }} />
+
+      <div style={{ position: "relative", marginBottom: 8 }}>
+        {toolsOpen && (
+          <div
+            className="glass"
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 42,
+              zIndex: 20,
+              padding: 8,
+              borderRadius: 8,
+              border: "1px solid var(--hair)",
+              background: "rgba(10,10,15,0.96)",
+              boxShadow: "0 18px 44px rgba(0,0,0,0.36)",
+            }}
+          >
+            {TOOL_MENU_SECTIONS.map((section) => (
+              <div key={section.label} style={{ paddingBottom: 8 }}>
+                <div
+                  style={{
+                    padding: "4px 6px 6px",
+                    fontSize: 9.5,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.12em",
+                    color: "var(--text-3)",
+                    fontWeight: 600,
+                  }}
+                >
+                  {section.label}
+                </div>
+                {section.items.map((item) => (
+                  <NavLinkItem
+                    key={item.key}
+                    item={item}
+                    active={isActive(item.href)}
+                    compact
+                    onClick={() => setToolsOpen(false)}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          type="button"
+          aria-expanded={toolsOpen}
+          aria-label="Abrir herramientas operacionales"
+          onClick={() => setToolsOpen((value) => !value)}
+          style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            padding: "8px 9px",
+            borderRadius: 6,
+            border: "1px solid var(--hair)",
+            background: toolsOpen ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.025)",
+            color: "var(--text-1)",
+            cursor: "pointer",
+            fontSize: 12.5,
+          }}
+        >
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
+            <Settings size={15} style={{ color: toolsOpen ? "var(--z-cyan)" : "var(--text-2)" }} />
+            Herramientas
+          </span>
+          <span style={{ color: "var(--text-3)", fontFamily: "var(--font-jetbrains-mono)", fontSize: 10 }}>
+            {toolsOpen ? "ON" : "OFF"}
+          </span>
+        </button>
+      </div>
 
       {/* User */}
       <div
@@ -381,5 +392,79 @@ export function Sidebar() {
         </button>
       </div>
     </aside>
+  );
+}
+
+type NavItem = (typeof ESSENTIAL_NAV_ITEMS)[number] | (typeof TOOL_MENU_SECTIONS)[number]["items"][number];
+
+function NavLinkItem({
+  item,
+  active,
+  compact = false,
+  onClick,
+}: {
+  item: NavItem;
+  active: boolean;
+  compact?: boolean;
+  onClick?: () => void;
+}) {
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: compact ? "7px 8px" : "7px 8px",
+        borderRadius: 6,
+        background: active
+          ? "linear-gradient(90deg, oklch(0.62 0.22 295 / 0.16), transparent)"
+          : "transparent",
+        color: active ? "var(--text-0)" : "var(--text-1)",
+        textDecoration: "none",
+        fontSize: compact ? 12.5 : 13,
+        fontWeight: active ? 500 : 400,
+        position: "relative",
+        flexShrink: 0,
+      }}
+      aria-current={active ? "page" : undefined}
+    >
+      {active && (
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 8,
+            bottom: 8,
+            width: 2,
+            borderRadius: 2,
+            background: "var(--aurora)",
+          }}
+        />
+      )}
+      <Icon
+        size={15}
+        style={{ color: active ? "var(--z-cyan)" : "var(--text-2)", flexShrink: 0 }}
+      />
+      <span className="truncate">{item.label}</span>
+      {"badge" in item && item.badge && (
+        <span
+          style={{
+            marginLeft: "auto",
+            fontSize: 10,
+            fontFamily: "var(--font-jetbrains-mono)",
+            fontWeight: 600,
+            color: active ? "#0a0a0f" : "var(--text-0)",
+            background: active ? "var(--aurora)" : "rgba(255,255,255,0.08)",
+            padding: "2px 6px",
+            borderRadius: 4,
+          }}
+        >
+          {item.badge}
+        </span>
+      )}
+    </Link>
   );
 }
