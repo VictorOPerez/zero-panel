@@ -1,4 +1,4 @@
-import { api } from "./client";
+import { api, apiFetch } from "./client";
 
 export type ContactStage =
   | "lead"
@@ -143,9 +143,9 @@ export function removeTag(
   contactId: string,
   tag: string
 ): Promise<{ ok: true; removed: boolean }> {
-  return api.delete(
+  return apiFetch(
     `/api/admin/tenants/${encodeURIComponent(tenantId)}/crm/contacts/${encodeURIComponent(contactId)}/tags`,
-    { body: { tag } } as any
+    { method: "DELETE", body: { tag } }
   );
 }
 

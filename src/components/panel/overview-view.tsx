@@ -165,10 +165,10 @@ function OverviewContent({ tenantId }: { tenantId: string }) {
             subtitle="Sandbox chat con trace_id y typing_ms"
           />
           <QuickAction
-            href="/bot"
+            href="/brief"
             icon={<Zap size={16} />}
-            title="Editar persona"
-            subtitle="Tono, idioma, horarios por canal"
+            title="Ver brief"
+            subtitle="Contexto vigente del bot"
           />
           <QuickAction
             href="/bookings"

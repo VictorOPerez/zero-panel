@@ -144,7 +144,7 @@ function FollowupsInner({ tenantId }: { tenantId: string }) {
           </div>
           <div style={{ fontSize: 12, color: "var(--text-2)" }}>
             El bot agenda followups automáticamente cuando un cliente dice
-            cosas como "te escribo el lunes" o "recordamelo en 2 horas".
+            cosas como &quot;te escribo el lunes&quot; o &quot;recordamelo en 2 horas&quot;.
           </div>
         </div>
       )}

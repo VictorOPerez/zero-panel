@@ -9,7 +9,6 @@ import {
   LogOut,
   CreditCard,
   Settings,
-  Sparkles,
   BookOpen,
   Wallet,
   Users,
@@ -25,22 +24,36 @@ import { IconDot } from "@/components/icons";
 import { useAuthStore } from "@/store/auth";
 import { useStripeMode } from "@/lib/hooks/use-stripe-mode";
 
-const NAV_ITEMS = [
-  { key: "integrations", label: "Inicio", href: "/integrations", icon: Home },
-  { key: "inbox", label: "Inbox", href: "/inbox", icon: Inbox, badge: 14 },
-  { key: "bot", label: "Bot", href: "/bot", icon: Sparkles },
-  { key: "brief", label: "Brief", href: "/brief", icon: FileText },
-  { key: "knowledge", label: "Conocimiento", href: "/knowledge", icon: BookOpen },
-  { key: "services", label: "Servicios", href: "/services", icon: Briefcase },
-  { key: "crm", label: "Contactos", href: "/crm", icon: Users },
-  { key: "followups", label: "Followups", href: "/followups", icon: CalendarClock },
-  { key: "products", label: "Productos", href: "/products", icon: Package },
-  { key: "orders", label: "Pedidos", href: "/orders", icon: ShoppingBag },
-  { key: "payments", label: "Cobros", href: "/payments", icon: Wallet },
-  { key: "admins", label: "Admins WA", href: "/admins", icon: ShieldUser },
-  { key: "numbers", label: "Números", href: "/numbers", icon: Phone },
-  { key: "billing", label: "Suscripción", href: "/billing", icon: CreditCard },
-  { key: "settings", label: "Configuración", href: "/settings", icon: Settings },
+const NAV_SECTIONS = [
+  {
+    label: "Esenciales",
+    items: [
+      { key: "inbox", label: "Inbox", href: "/inbox", icon: Inbox, badge: 14 },
+      { key: "brief", label: "Brief", href: "/brief", icon: FileText },
+      { key: "admins", label: "Admins WA", href: "/admins", icon: ShieldUser },
+      { key: "integrations", label: "Conexiones", href: "/integrations", icon: Home },
+      { key: "billing", label: "Suscripcion", href: "/billing", icon: CreditCard },
+    ],
+  },
+  {
+    label: "Operacional",
+    items: [
+      { key: "knowledge", label: "Conocimiento", href: "/knowledge", icon: BookOpen },
+      { key: "services", label: "Servicios", href: "/services", icon: Briefcase },
+      { key: "crm", label: "Contactos", href: "/crm", icon: Users },
+      { key: "followups", label: "Followups", href: "/followups", icon: CalendarClock },
+      { key: "products", label: "Productos", href: "/products", icon: Package },
+      { key: "orders", label: "Pedidos", href: "/orders", icon: ShoppingBag },
+      { key: "payments", label: "Cobros", href: "/payments", icon: Wallet },
+      { key: "numbers", label: "Numeros", href: "/numbers", icon: Phone },
+    ],
+  },
+  {
+    label: "Sistema",
+    items: [
+      { key: "settings", label: "Configuracion", href: "/settings", icon: Settings },
+    ],
+  },
 ] as const;
 
 const CHANNELS = [
@@ -207,87 +220,88 @@ export function Sidebar() {
 
       <div style={{ height: 20 }} />
 
-      {/* Nav label */}
-      <div
-        style={{
-          padding: "0 4px 6px",
-          fontSize: 10,
-          textTransform: "uppercase",
-          letterSpacing: "0.12em",
-          color: "var(--text-3)",
-          fontWeight: 600,
-        }}
-      >
-        Navegación
-      </div>
-
-      {/* Nav items */}
       <nav
-        style={{ display: "flex", flexDirection: "column", gap: 1, overflowY: "auto", minHeight: 0 }}
-        aria-label="Navegación principal"
+        style={{ display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", minHeight: 0 }}
+        aria-label="Navegacion principal"
       >
-        {NAV_ITEMS.map((n) => {
-          const Icon = n.icon;
-          const on = isActive(n.href);
-          return (
-            <Link
-              key={n.key}
-              href={n.href}
+        {NAV_SECTIONS.map((section) => (
+          <div key={section.label} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "7px 8px",
-                borderRadius: 6,
-                background: on
-                  ? "linear-gradient(90deg, oklch(0.62 0.22 295 / 0.16), transparent)"
-                  : "transparent",
-                color: on ? "var(--text-0)" : "var(--text-1)",
-                textDecoration: "none",
-                fontSize: 13,
-                fontWeight: on ? 500 : 400,
-                position: "relative",
-                flexShrink: 0,
+                padding: "0 4px 6px",
+                fontSize: 10,
+                textTransform: "uppercase",
+                letterSpacing: "0.12em",
+                color: "var(--text-3)",
+                fontWeight: 600,
               }}
-              aria-current={on ? "page" : undefined}
             >
-              {on && (
-                <div
+              {section.label}
+            </div>
+            {section.items.map((n) => {
+              const Icon = n.icon;
+              const on = isActive(n.href);
+              return (
+                <Link
+                  key={n.key}
+                  href={n.href}
                   style={{
-                    position: "absolute",
-                    left: 0,
-                    top: 8,
-                    bottom: 8,
-                    width: 2,
-                    borderRadius: 2,
-                    background: "var(--aurora)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "7px 8px",
+                    borderRadius: 6,
+                    background: on
+                      ? "linear-gradient(90deg, oklch(0.62 0.22 295 / 0.16), transparent)"
+                      : "transparent",
+                    color: on ? "var(--text-0)" : "var(--text-1)",
+                    textDecoration: "none",
+                    fontSize: 13,
+                    fontWeight: on ? 500 : 400,
+                    position: "relative",
+                    flexShrink: 0,
                   }}
-                />
-              )}
-              <Icon
-                size={15}
-                style={{ color: on ? "var(--z-cyan)" : "var(--text-2)", flexShrink: 0 }}
-              />
-              <span className="truncate">{n.label}</span>
-              {"badge" in n && n.badge && (
-                <span
-                  style={{
-                    marginLeft: "auto",
-                    fontSize: 10,
-                    fontFamily: "var(--font-jetbrains-mono)",
-                    fontWeight: 600,
-                    color: on ? "#0a0a0f" : "var(--text-0)",
-                    background: on ? "var(--aurora)" : "rgba(255,255,255,0.08)",
-                    padding: "2px 6px",
-                    borderRadius: 4,
-                  }}
+                  aria-current={on ? "page" : undefined}
                 >
-                  {n.badge}
-                </span>
-              )}
-            </Link>
-          );
-        })}
+                  {on && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: 8,
+                        bottom: 8,
+                        width: 2,
+                        borderRadius: 2,
+                        background: "var(--aurora)",
+                      }}
+                    />
+                  )}
+                  <Icon
+                    size={15}
+                    style={{ color: on ? "var(--z-cyan)" : "var(--text-2)", flexShrink: 0 }}
+                  />
+                  <span className="truncate">{n.label}</span>
+                  {"badge" in n && n.badge && (
+                    <span
+                      style={{
+                        marginLeft: "auto",
+                        fontSize: 10,
+                        fontFamily: "var(--font-jetbrains-mono)",
+                        fontWeight: 600,
+                        color: on ? "#0a0a0f" : "var(--text-0)",
+                        background: on ? "var(--aurora)" : "rgba(255,255,255,0.08)",
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                      }}
+                    >
+                      {n.badge}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       <div style={{ flex: 1, minHeight: 8 }} />
