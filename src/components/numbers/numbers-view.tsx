@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Loader2,
@@ -511,28 +511,24 @@ function BuyWizard({
   const [country, setCountry] = useState<string>(COUNTRIES[0].code);
   const [areaCode, setAreaCode] = useState<string>("");
   const [results, setResults] = useState<AvailableNumber[] | null>(null);
-  const [lastResultsRef, setLastResultsRef] =
-    useState<AvailableNumber[] | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<AvailableNumber | null>(null);
   const [forwardToPhone, setForwardToPhone] = useState<string>("");
-
-  // Cuando llega un nuevo set de resultados, deseleccionamos cualquier item
-  // previamente elegido. Patrón "ajustar state durante render".
-  if (lastResultsRef !== results) {
-    setLastResultsRef(results);
-    setSelected(null);
-  }
-
   const searchMut = useMutation({
     mutationFn: () =>
       searchAvailableNumbers(tenantId, {
         country,
         areaCode: areaCode.trim() || undefined,
         limit: 20,
-      }),
+    }),
     onSuccess: (items) => {
       setResults(items);
+      setSelected((current) => {
+        if (current && items.some((item) => item.phone_e164 === current.phone_e164)) {
+          return current;
+        }
+        return items[0] ?? null;
+      });
       setSearchError(null);
     },
     onError: (err) => {
@@ -551,8 +547,15 @@ function BuyWizard({
         );
       }
       setResults(null);
+      setSelected(null);
     },
   });
+
+  useEffect(() => {
+    searchMut.mutate();
+    // Auto-search once when the modal opens; manual searches handle filters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const buyMut = useMutation({
     mutationFn: () => {
@@ -699,7 +702,10 @@ function BuyWizard({
             </Field>
             <button
               type="button"
-              onClick={() => searchMut.mutate()}
+              onClick={() => {
+                setSelected(null);
+                searchMut.mutate();
+              }}
               disabled={searchMut.isPending}
               style={primaryBtn}
             >
@@ -714,6 +720,10 @@ function BuyWizard({
               Buscar
             </button>
           </div>
+
+          {searchMut.isPending && !results && (
+            <div style={loadingStyle}>Buscando numeros disponibles...</div>
+          )}
 
           {searchError && (
             <ErrorBanner
@@ -741,7 +751,7 @@ function BuyWizard({
                   marginBottom: 4,
                 }}
               >
-                Disponibles ({results.length})
+                Elige un numero ({results.length})
               </div>
               {results.map((item) => {
                 const isSelected = selected?.phone_e164 === item.phone_e164;
@@ -905,7 +915,7 @@ function BuyWizard({
             ) : (
               <CheckCircle2 size={13} />
             )}
-            Confirmar compra
+            {selected ? `Comprar +${selected.phone_e164}` : "Comprar numero"}
           </button>
         </div>
       </div>

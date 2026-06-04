@@ -29,6 +29,7 @@ const ESSENTIAL_NAV_ITEMS = [
   { key: "brief", label: "Brief", href: "/brief", icon: FileText },
   { key: "admins", label: "Admins WA", href: "/admins", icon: ShieldUser },
   { key: "integrations", label: "Conexiones", href: "/integrations", icon: Home },
+  { key: "numbers", label: "Numeros", href: "/numbers", icon: Phone },
   { key: "billing", label: "Suscripcion", href: "/billing", icon: CreditCard },
 ] as const;
 
@@ -43,7 +44,6 @@ const TOOL_MENU_SECTIONS = [
       { key: "products", label: "Productos", href: "/products", icon: Package },
       { key: "orders", label: "Pedidos", href: "/orders", icon: ShoppingBag },
       { key: "payments", label: "Cobros", href: "/payments", icon: Wallet },
-      { key: "numbers", label: "Numeros", href: "/numbers", icon: Phone },
     ],
   },
   {
