@@ -17,6 +17,7 @@ import {
   Package,
   ShoppingBag,
   Briefcase,
+  FileText,
   ShieldUser,
   Phone,
 } from "lucide-react";
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { key: "integrations", label: "Inicio", href: "/integrations", icon: Home },
   { key: "inbox", label: "Inbox", href: "/inbox", icon: Inbox, badge: 14 },
   { key: "bot", label: "Bot", href: "/bot", icon: Sparkles },
+  { key: "brief", label: "Brief", href: "/brief", icon: FileText },
   { key: "knowledge", label: "Conocimiento", href: "/knowledge", icon: BookOpen },
   { key: "services", label: "Servicios", href: "/services", icon: Briefcase },
   { key: "crm", label: "Contactos", href: "/crm", icon: Users },

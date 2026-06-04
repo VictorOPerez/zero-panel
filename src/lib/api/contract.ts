@@ -510,6 +510,18 @@ export interface ListAdminAuditFilter {
   offset?: number;
 }
 
+// ── Business brief (markdown del contexto del negocio) ───────────────────
+// Blob de markdown que el admin construye conversando con el AdminOrchestrator
+// vía WhatsApp. Se inyecta al system prompt del customer bot. Panel solo READ —
+// la edición es exclusivamente WA. version autoincrement por commit.
+
+export interface BusinessBrief {
+  content: string;
+  version: number;
+  updated_at: string | null;
+  updated_by_admin_id: string | null;
+}
+
 // ── Virtual numbers marketplace (Telnyx + Stripe markup) ──────────────────
 // Reventa de números virtuales. El tenant compra desde el panel, Zero paga al
 // provider (Telnyx) y cobra al tenant via Stripe markup fijo. La activación
