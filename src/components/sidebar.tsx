@@ -10,7 +10,6 @@ import {
   CreditCard,
   Settings,
   BookOpen,
-  Wallet,
   Users,
   CalendarClock,
   Package,
@@ -43,7 +42,6 @@ const TOOL_MENU_SECTIONS = [
       { key: "followups", label: "Followups", href: "/followups", icon: CalendarClock },
       { key: "products", label: "Productos", href: "/products", icon: Package },
       { key: "orders", label: "Pedidos", href: "/orders", icon: ShoppingBag },
-      { key: "payments", label: "Cobros", href: "/payments", icon: Wallet },
     ],
   },
   {
