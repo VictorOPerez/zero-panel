@@ -67,6 +67,21 @@ export async function updateNumberForward(
   return res.number;
 }
 
+// El cliente confirma que terminó la verificación en WhatsApp Manager →
+// el número pasa a "active".
+export async function markNumberConnected(
+  tenantId: string,
+  numberId: string
+): Promise<TenantNumber> {
+  const res = await api.patch<SingleEnvelope>(
+    `/api/admin/tenants/${encodeURIComponent(
+      tenantId
+    )}/numbers/${encodeURIComponent(numberId)}/connected`,
+    {}
+  );
+  return res.number;
+}
+
 export async function releaseTenantNumber(
   tenantId: string,
   numberId: string

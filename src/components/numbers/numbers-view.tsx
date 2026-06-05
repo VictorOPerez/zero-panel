@@ -13,13 +13,18 @@ import {
   Info,
   ShieldCheck,
   X,
-  ChevronRight,
   PhoneForwarded,
+  ShoppingCart,
+  BadgeCheck,
+  MessageCircle,
+  ExternalLink,
+  Sparkles,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   startNumberCheckout,
   listTenantNumbers,
+  markNumberConnected,
   releaseTenantNumber,
   searchAvailableNumbers,
   updateNumberForward,
@@ -163,9 +168,6 @@ function NumberRow({
   const [lastServerForward, setLastServerForward] = useState(
     number.forward_to_phone
   );
-  const [showInstructions, setShowInstructions] = useState(
-    number.status === "purchased"
-  );
 
   // Sync local state cuando el backend devuelve un valor distinto al último
   // que vimos. Patrón "ajustar state durante render" — evita useEffect.
@@ -191,6 +193,24 @@ function NumberRow({
           : "No pudimos actualizar el reenvío."
       );
       setForward(number.forward_to_phone ?? "");
+    },
+  });
+
+  const connectMut = useMutation({
+    mutationFn: () => markNumberConnected(tenantId, number.id),
+    onSuccess: (updated) => {
+      qc.setQueryData<TenantNumber[] | undefined>(
+        ["tenant-numbers", tenantId],
+        (prev) => prev?.map((n) => (n.id === updated.id ? updated : n))
+      );
+      onError(null);
+    },
+    onError: (err) => {
+      onError(
+        err instanceof ApiError
+          ? err.payload.error
+          : "No pudimos marcar el número como conectado."
+      );
     },
   });
 
@@ -315,64 +335,15 @@ function NumberRow({
         </div>
       </div>
 
-      <div
-        style={{
-          marginTop: 14,
-          paddingTop: 14,
-          borderTop: "1px solid var(--hair)",
-          display: "grid",
-          gridTemplateColumns: "1fr",
-          gap: 10,
-        }}
-      >
-        <Field
-          label={
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <PhoneForwarded size={11} />
-              Reenvío de llamadas (verificación de WhatsApp)
-            </span>
-          }
-        >
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <input
-              type="tel"
-              value={forward}
-              onChange={(e) => setForward(e.target.value)}
-              onBlur={commitForward}
-              placeholder="+54911..."
-              style={{ ...inputStyle, flex: 1 }}
-            />
-            {forwardMut.isPending && (
-              <Loader2
-                size={13}
-                style={{
-                  animation: "spin 900ms linear infinite",
-                  color: "var(--text-3)",
-                }}
-              />
-            )}
-          </div>
-          <span
-            style={{
-              fontSize: 11,
-              color: "var(--text-3)",
-              marginTop: 3,
-              lineHeight: 1.4,
-            }}
-          >
-            Cuando Meta llame al número para enviarte el código de verificación,
-            re-enrutamos la llamada a tu celular. Si lo dejás vacío no podrás
-            recibir el código por voz.
-          </span>
-        </Field>
-      </div>
-
-      {number.status === "purchased" && (
-        <ActivationInstructions
-          phone={number.phone_e164}
+      {number.status !== "released" && (
+        <ActivationGuide
+          number={number}
           forward={forward}
-          open={showInstructions}
-          onToggle={() => setShowInstructions((v) => !v)}
+          setForward={setForward}
+          commitForward={commitForward}
+          forwardPending={forwardMut.isPending}
+          onConnect={() => connectMut.mutate()}
+          connectPending={connectMut.isPending}
         />
       )}
     </div>
@@ -430,103 +401,326 @@ function StatusBadge({ status }: { status: TenantNumberStatus }) {
   );
 }
 
-function ActivationInstructions({
-  phone,
+// Guía de activación educativa: una vez comprado el número, lleva al cliente
+// paso a paso para conectarlo a WhatsApp. Los pasos se marcan completados solos
+// (forward cargado, verificación confirmada). Es OPCIONAL — se aclara arriba.
+function ActivationGuide({
+  number,
   forward,
-  open,
-  onToggle,
+  setForward,
+  commitForward,
+  forwardPending,
+  onConnect,
+  connectPending,
 }: {
-  phone: string;
+  number: TenantNumber;
   forward: string;
-  open: boolean;
-  onToggle: () => void;
+  setForward: (v: string) => void;
+  commitForward: () => void;
+  forwardPending: boolean;
+  onConnect: () => void;
+  connectPending: boolean;
 }) {
+  const forwardDone = Boolean(number.forward_to_phone);
+  const connectedDone =
+    number.status === "active" || Boolean(number.paired_waba_id);
+  const doneCount = 1 + (forwardDone ? 1 : 0) + (connectedDone ? 1 : 0);
+
+  const forwardInput = (
+    <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8 }}>
+      <input
+        type="tel"
+        value={forward}
+        onChange={(e) => setForward(e.target.value)}
+        onBlur={commitForward}
+        placeholder="+54 9 11 5555 1234"
+        style={{ ...inputStyle, flex: 1 }}
+      />
+      {forwardPending ? (
+        <Loader2 size={14} style={{ animation: "spin 900ms linear infinite", color: "var(--text-3)" }} />
+      ) : forwardDone ? (
+        <CheckCircle2 size={15} style={{ color: "var(--z-green)" }} />
+      ) : null}
+    </div>
+  );
+
+  // Estado final: conectado.
+  if (connectedDone) {
+    return (
+      <div
+        style={{
+          marginTop: 14,
+          padding: "14px 16px",
+          borderRadius: 10,
+          border: "1px solid oklch(0.78 0.15 155 / 0.30)",
+          background: "oklch(0.78 0.15 155 / 0.06)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <Sparkles size={16} style={{ color: "var(--z-green)" }} />
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-0)" }}>
+            ¡Conectado a WhatsApp Business! 🎉
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 6, lineHeight: 1.5 }}>
+          Ya podés usar este número como tu línea de WhatsApp. Mantené tu celular
+          de reenvío actualizado por si Meta te pide re-verificar más adelante.
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <Field
+            label={
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <PhoneForwarded size={11} /> Celular de reenvío
+              </span>
+            }
+          >
+            {forwardInput}
+          </Field>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
         marginTop: 14,
-        padding: "12px 14px",
-        borderRadius: 8,
-        border: "1px solid oklch(0.85 0.18 90 / 0.3)",
-        background: "oklch(0.85 0.18 90 / 0.06)",
+        padding: "14px 16px",
+        borderRadius: 10,
+        border: "1px solid var(--hair-strong)",
+        background: "rgba(255,255,255,0.02)",
       }}
     >
-      <button
-        type="button"
-        onClick={onToggle}
-        style={{
-          width: "100%",
-          border: "none",
-          background: "transparent",
-          color: "var(--text-0)",
-          fontSize: 13,
-          fontWeight: 600,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: 0,
-          textAlign: "left",
-        }}
-      >
-        <AlertTriangle size={14} style={{ color: "oklch(0.85 0.18 90)" }} />
-        <span>Conectalo a WhatsApp Business (4 pasos)</span>
-        <ChevronRight
-          size={13}
+      {/* Header educativo */}
+      <div style={{ display: "flex", gap: 11, alignItems: "flex-start" }}>
+        <div
           style={{
-            marginLeft: "auto",
-            color: "var(--text-3)",
-            transform: open ? "rotate(90deg)" : "none",
-            transition: "transform 120ms",
-          }}
-        />
-      </button>
-
-      {open && (
-        <ol
-          style={{
-            margin: "10px 0 0",
-            paddingLeft: 18,
+            width: 34,
+            height: 34,
+            borderRadius: 9,
+            background: "oklch(0.72 0.16 155 / 0.12)",
             display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            fontSize: 12.5,
-            color: "var(--text-1)",
-            lineHeight: 1.55,
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
           }}
         >
-          <li>
-            Abrí{" "}
-            <a
-              href="https://business.facebook.com/wa/manage/phone-numbers/"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={linkStyle}
+          <MessageCircle size={17} style={{ color: "oklch(0.78 0.15 155)" }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-0)" }}>
+            Conectá este número a WhatsApp Business
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>
+            <strong style={{ color: "var(--text-1)" }}>Es opcional.</strong>{" "}
+            Hacelo solo si querés usar este número como tu línea de WhatsApp. Si
+            no, dejalo comprado y conectalo cuando quieras.
+          </div>
+        </div>
+        <span
+          style={{
+            fontSize: 10.5,
+            fontFamily: "var(--font-jetbrains-mono)",
+            fontWeight: 700,
+            color: "var(--text-2)",
+            border: "1px solid var(--hair)",
+            borderRadius: 20,
+            padding: "3px 9px",
+            flexShrink: 0,
+          }}
+        >
+          {doneCount}/3
+        </span>
+      </div>
+
+      {/* Pasos */}
+      <div style={{ marginTop: 16 }}>
+        <StepItem index={1} done title="Número comprado" icon={ShoppingCart}>
+          <span>
+            Ya es tuyo:{" "}
+            <code style={codeStyle}>+{number.phone_e164}</code>. Se cobra mensual
+            hasta que lo liberes.
+          </span>
+        </StepItem>
+
+        <StepItem
+          index={2}
+          done={forwardDone}
+          active={!forwardDone}
+          title="Indicá tu celular para recibir el código"
+          icon={PhoneForwarded}
+        >
+          <span>
+            Cuando Meta llame al número virtual para darte el código, reenviamos
+            esa llamada a tu celular.
+          </span>
+          {forwardInput}
+        </StepItem>
+
+        <StepItem
+          index={3}
+          done={connectedDone}
+          active={forwardDone}
+          title="Verificá en WhatsApp Manager (por voz)"
+          icon={ShieldCheck}
+          isLast
+        >
+          {!forwardDone ? (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                color: "var(--text-3)",
+              }}
             >
-              business.facebook.com → WhatsApp Manager → Phone Numbers
-            </a>{" "}
-            y tocá <strong>Add phone number</strong>.
-          </li>
-          <li>
-            Ingresá <code style={codeStyle}>+{phone}</code> con el nombre del
-            negocio. Pedí verificación por <strong>llamada (voice)</strong> —
-            los SMS hacia VoIP suelen no llegar.
-          </li>
-          <li>
-            Meta va a llamar a tu número virtual. La llamada se reenvía
-            automáticamente a{" "}
-            <strong>
-              {forward ? `+${forward.replace(/^\+/, "")}` : "tu celular configurado arriba"}
-            </strong>
-            . Atendé y anotá el código de 6 dígitos.
-          </li>
-          <li>
-            Volvé al Manager, ingresá el código y completá la configuración del
-            perfil. Una vez verificado, en este panel pasará a{" "}
-            <strong>Activo</strong>.
-          </li>
-        </ol>
-      )}
+              <AlertTriangle size={12} /> Completá primero el paso 2 (tu celular)
+              para poder recibir el código.
+            </span>
+          ) : (
+            <>
+              <ol
+                style={{
+                  margin: "2px 0 0",
+                  paddingLeft: 16,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  lineHeight: 1.5,
+                }}
+              >
+                <li>
+                  Abrí{" "}
+                  <a
+                    href="https://business.facebook.com/wa/manage/phone-numbers/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={linkStyle}
+                  >
+                    WhatsApp Manager → Phone numbers{" "}
+                    <ExternalLink size={10} style={{ display: "inline", verticalAlign: "middle" }} />
+                  </a>{" "}
+                  y tocá <strong>Add phone number</strong>.
+                </li>
+                <li>
+                  Ingresá <code style={codeStyle}>+{number.phone_e164}</code> y
+                  elegí verificación por <strong>llamada (voz)</strong> — los SMS
+                  a números virtuales no llegan.
+                </li>
+                <li>
+                  Meta llama al número → la reenviamos a{" "}
+                  <strong>+{forward.replace(/^\+/, "")}</strong> → atendé y anotá
+                  el código.
+                </li>
+                <li>Ingresá el código en Meta y completá el perfil.</li>
+              </ol>
+              <button
+                type="button"
+                onClick={onConnect}
+                disabled={connectPending}
+                style={{ ...primaryBtn, marginTop: 10 }}
+              >
+                {connectPending ? (
+                  <Loader2 size={13} style={{ animation: "spin 900ms linear infinite" }} />
+                ) : (
+                  <BadgeCheck size={13} />
+                )}
+                Ya lo conecté
+              </button>
+            </>
+          )}
+        </StepItem>
+      </div>
+    </div>
+  );
+}
+
+// Un paso de la guía: riel a la izquierda (check verde si done, número si no) +
+// contenido a la derecha. isLast oculta la línea conectora.
+function StepItem({
+  index,
+  title,
+  done = false,
+  active = false,
+  icon: Icon,
+  isLast = false,
+  children,
+}: {
+  index: number;
+  title: string;
+  done?: boolean;
+  active?: boolean;
+  icon: typeof ShoppingCart;
+  isLast?: boolean;
+  children: React.ReactNode;
+}) {
+  const accent = done
+    ? "var(--z-green)"
+    : active
+    ? "var(--z-cyan)"
+    : "var(--text-3)";
+  return (
+    <div style={{ display: "flex", gap: 12 }}>
+      {/* Riel */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: "50%",
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: `1.5px solid ${done ? "oklch(0.78 0.15 155 / 0.5)" : active ? "var(--z-cyan)" : "var(--hair-strong)"}`,
+            background: done ? "oklch(0.78 0.15 155 / 0.12)" : "transparent",
+            color: accent,
+            fontSize: 12,
+            fontWeight: 700,
+            fontFamily: "var(--font-jetbrains-mono)",
+          }}
+        >
+          {done ? <CheckCircle2 size={15} /> : index}
+        </div>
+        {!isLast && (
+          <div style={{ flex: 1, width: 2, background: "var(--hair)", minHeight: 16, marginTop: 2 }} />
+        )}
+      </div>
+
+      {/* Contenido */}
+      <div style={{ flex: 1, minWidth: 0, paddingBottom: isLast ? 0 : 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Icon size={13} style={{ color: accent, flexShrink: 0 }} />
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: done ? "var(--text-2)" : "var(--text-0)",
+            }}
+          >
+            {title}
+          </span>
+          {done && (
+            <span
+              style={{
+                fontSize: 9.5,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "var(--z-green)",
+                border: "1px solid oklch(0.78 0.15 155 / 0.4)",
+                borderRadius: 4,
+                padding: "1px 6px",
+              }}
+            >
+              Listo
+            </span>
+          )}
+        </div>
+        <div style={{ marginTop: 5, fontSize: 12, color: "var(--text-2)", lineHeight: 1.5 }}>
+          {children}
+        </div>
+      </div>
     </div>
   );
 }
