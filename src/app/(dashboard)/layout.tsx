@@ -4,6 +4,7 @@ import { QueryProvider } from "@/providers/query-provider";
 import { MobileMenuButton } from "@/components/mobile-menu-button";
 import { PaymentBanner } from "@/components/payment-banner";
 import { AuthGate } from "@/components/auth/auth-gate";
+import { FloatingConnectNudge } from "@/components/numbers/floating-connect-nudge";
 
 export default function DashboardLayout({
   children,
@@ -82,6 +83,9 @@ export default function DashboardLayout({
               {children}
             </div>
           </main>
+
+          {/* Nudge flotante de onboarding (conectar/comprar número) */}
+          <FloatingConnectNudge />
         </div>
       </AuthGate>
     </QueryProvider>

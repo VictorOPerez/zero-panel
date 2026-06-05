@@ -127,7 +127,7 @@ function Numbers({ tenantId }: { tenantId: string }) {
       )}
 
       {!query.isLoading && (query.data?.length ?? 0) === 0 && (
-        <EmptyState onAdd={() => setWizardOpen(true)} />
+        <PurchaseGuide onBuy={() => setWizardOpen(true)} />
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -629,6 +629,93 @@ function ActivationGuide({
               </button>
             </>
           )}
+        </StepItem>
+      </div>
+    </div>
+  );
+}
+
+// Guía cuando el tenant TODAVÍA no compró número: misma estética, pero el
+// paso 1 es "Comprá tu número" (accionable) y los pasos 2-3 quedan pendientes.
+function PurchaseGuide({ onBuy }: { onBuy: () => void }) {
+  return (
+    <div
+      style={{
+        padding: "16px 18px",
+        borderRadius: 12,
+        border: "1px solid var(--hair-strong)",
+        background: "rgba(255,255,255,0.02)",
+        marginBottom: 14,
+      }}
+    >
+      {/* Header */}
+      <div style={{ display: "flex", gap: 11, alignItems: "flex-start" }}>
+        <div
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 9,
+            background: "oklch(0.72 0.16 155 / 0.12)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <MessageCircle size={17} style={{ color: "oklch(0.78 0.15 155)" }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-0)" }}>
+            Conectá WhatsApp Business a tu agente virtual
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>
+            En 3 pasos tu número virtual queda atendiendo solo con el bot.{" "}
+            <strong style={{ color: "var(--text-1)" }}>Es opcional</strong> — solo
+            si querés una línea de WhatsApp dedicada para el agente.
+          </div>
+        </div>
+        <span
+          style={{
+            fontSize: 10.5,
+            fontFamily: "var(--font-jetbrains-mono)",
+            fontWeight: 700,
+            color: "var(--text-2)",
+            border: "1px solid var(--hair)",
+            borderRadius: 20,
+            padding: "3px 9px",
+            flexShrink: 0,
+          }}
+        >
+          0/3
+        </span>
+      </div>
+
+      {/* Pasos */}
+      <div style={{ marginTop: 16 }}>
+        <StepItem index={1} active title="Comprá tu número virtual" icon={ShoppingCart}>
+          <span>
+            Elegí un número (US por ahora) y pagalo con tarjeta. Es una
+            suscripción mensual que podés cancelar cuando quieras.
+          </span>
+          <div style={{ marginTop: 10 }}>
+            <button type="button" onClick={onBuy} style={primaryBtn}>
+              <Plus size={13} /> Comprar número
+            </button>
+          </div>
+        </StepItem>
+
+        <StepItem index={2} title="Indicá tu celular para el código" icon={PhoneForwarded}>
+          <span>
+            Reenviamos la llamada de verificación de Meta a tu celular para que
+            recibas el código por voz.
+          </span>
+        </StepItem>
+
+        <StepItem index={3} title="Verificá en WhatsApp Manager (por voz)" icon={ShieldCheck} isLast>
+          <span>
+            Agregás el número en WhatsApp Business y verificás por llamada. Listo:
+            tu agente queda atendiendo en ese número.
+          </span>
         </StepItem>
       </div>
     </div>
@@ -1181,44 +1268,6 @@ function ProtectedNotice() {
           business.facebook.com — te guiamos paso a paso después de la compra.
         </div>
       </div>
-    </div>
-  );
-}
-
-function EmptyState({ onAdd }: { onAdd: () => void }) {
-  return (
-    <div
-      style={{
-        padding: "40px 24px",
-        borderRadius: 10,
-        border: "1px dashed var(--hair-strong)",
-        background: "rgba(255,255,255,0.015)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 10,
-        textAlign: "center",
-      }}
-    >
-      <Phone size={20} style={{ color: "var(--text-3)" }} />
-      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-0)" }}>
-        Todavía no compraste ningún número
-      </div>
-      <div
-        style={{
-          fontSize: 12.5,
-          color: "var(--text-2)",
-          maxWidth: 460,
-          lineHeight: 1.55,
-        }}
-      >
-        Comprá un número virtual y lo usás como tu línea de WhatsApp Business.
-        Hoy soportamos US (más países en camino).
-      </div>
-      <button type="button" onClick={onAdd} style={primaryBtn}>
-        <Plus size={13} />
-        Comprar primer número
-      </button>
     </div>
   );
 }
