@@ -16,8 +16,9 @@ import {
   ChevronRight,
   PhoneForwarded,
 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
-  buyTenantNumber,
+  startNumberCheckout,
   listTenantNumbers,
   releaseTenantNumber,
   searchAvailableNumbers,
@@ -44,13 +45,36 @@ export function NumbersView() {
 
 function Numbers({ tenantId }: { tenantId: string }) {
   const qc = useQueryClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
 
   const query = useQuery({
     queryKey: ["tenant-numbers", tenantId],
     queryFn: () => listTenantNumbers(tenantId),
+    // Tras volver del Checkout, el número se aprovisiona por webhook (async):
+    // poll un rato para que aparezca solo.
+    refetchInterval: success ? 4000 : false,
   });
+
+  // Resultado del Stripe Checkout (?purchased=ok|cancel). El número aparece
+  // cuando el webhook lo aprovisiona — refrescamos la lista.
+  useEffect(() => {
+    const purchased = searchParams.get("purchased");
+    if (!purchased) return;
+    if (purchased === "ok") {
+      setSuccess(
+        "¡Pago confirmado! Estamos activando tu número, aparece en unos segundos."
+      );
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["tenant-numbers", tenantId] });
+    } else if (purchased === "cancel") {
+      setError("Cancelaste el pago. No se compró ningún número.");
+    }
+    router.replace("/numbers", { scroll: false });
+  }, [searchParams, router, qc, tenantId]);
 
   return (
     <PageShell
@@ -71,6 +95,26 @@ function Numbers({ tenantId }: { tenantId: string }) {
 
       {error && (
         <ErrorBanner message={error} onDismiss={() => setError(null)} />
+      )}
+
+      {success && (
+        <div
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid oklch(0.78 0.15 155 / 0.4)",
+            background: "oklch(0.78 0.15 155 / 0.10)",
+            color: "var(--z-green)",
+            fontSize: 12.5,
+            marginBottom: 14,
+          }}
+        >
+          <CheckCircle2 size={14} /> {success}
+        </div>
       )}
 
       {query.isLoading && (
@@ -96,14 +140,6 @@ function Numbers({ tenantId }: { tenantId: string }) {
         <BuyWizard
           tenantId={tenantId}
           onClose={() => setWizardOpen(false)}
-          onPurchased={(purchased) => {
-            qc.setQueryData<TenantNumber[] | undefined>(
-              ["tenant-numbers", tenantId],
-              (prev) => [purchased, ...(prev ?? [])]
-            );
-            setWizardOpen(false);
-            setError(null);
-          }}
           onError={setError}
         />
       )}
@@ -500,12 +536,10 @@ function ActivationInstructions({
 function BuyWizard({
   tenantId,
   onClose,
-  onPurchased,
   onError,
 }: {
   tenantId: string;
   onClose: () => void;
-  onPurchased: (number: TenantNumber) => void;
   onError: (msg: string | null) => void;
 }) {
   const [country, setCountry] = useState<string>(COUNTRIES[0].code);
@@ -560,43 +594,42 @@ function BuyWizard({
   const buyMut = useMutation({
     mutationFn: () => {
       if (!selected) throw new Error("no_selection");
-      return buyTenantNumber(tenantId, {
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "";
+      return startNumberCheckout(tenantId, {
         phone_e164: selected.phone_e164,
         country: selected.country,
         forward_to_phone: forwardToPhone.trim() || undefined,
+        success_url: `${origin}/numbers?purchased=ok`,
+        cancel_url: `${origin}/numbers?purchased=cancel`,
       });
     },
-    onSuccess: (purchased) => {
-      onPurchased(purchased);
+    onSuccess: ({ checkout_url }) => {
+      // Redirige a la página de pago de Stripe. El número se aprovisiona por
+      // webhook cuando el pago se confirma, y al volver (?purchased=ok) la
+      // lista lo muestra.
+      if (checkout_url) window.location.assign(checkout_url);
     },
     onError: (err) => {
       if (err instanceof ApiError) {
         const map: Record<string, string> = {
-          no_active_subscription:
-            "Necesitás una suscripción activa de Zero para comprar números. Andá a Suscripción y activá tu plan.",
           stripe_price_not_configured:
             "La plataforma todavía no terminó de configurar el cobro por números. Avisale al admin.",
-          provider_missing_key:
-            "La plataforma todavía no habilitó la compra. Avisale al admin que cargue TELNYX_API_KEY.",
-          duplicate_number:
-            "Ese número ya está activo en otro tenant. Elegí otro.",
+          invalid_input: "El número o país seleccionado no es válido.",
+          stripe_error:
+            "No pudimos iniciar el pago. Reintentá en un momento.",
         };
-        onError(map[err.payload.error] || err.payload.error || "No pudimos comprar.");
+        onError(map[err.payload.error] || err.payload.error || "No pudimos iniciar la compra.");
       } else {
-        onError("Error de red comprando el número.");
+        onError("Error de red iniciando la compra.");
       }
     },
   });
 
   const totalLine = useMemo(() => {
     if (!selected) return null;
-    return `${formatMoney(
-      selected.total_monthly_cents,
-      selected.currency
-    )} / mes (provider ${formatMoney(
-      selected.provider_cost_cents,
-      selected.currency
-    )} + servicio ${formatMoney(selected.markup_cents, selected.currency)})`;
+    // Mostramos solo el precio final al cliente (no el desglose de costo/margen).
+    return `${formatMoney(selected.total_monthly_cents, selected.currency)} / mes`;
   }, [selected]);
 
   return (
@@ -879,8 +912,9 @@ function BuyWizard({
                   lineHeight: 1.55,
                 }}
               >
-                Se va a agregar a tu suscripción actual de Zero y se cobra junto
-                con el plan. Podés liberarlo cuando quieras.
+                Te llevamos a una página de pago segura (Stripe) para confirmar.
+                El número se activa apenas se acredita el pago. Podés liberarlo
+                cuando quieras.
               </div>
             </div>
           )}
@@ -915,7 +949,7 @@ function BuyWizard({
             ) : (
               <CheckCircle2 size={13} />
             )}
-            {selected ? `Comprar +${selected.phone_e164}` : "Comprar numero"}
+            {selected ? `Ir a pagar +${selected.phone_e164}` : "Comprar numero"}
           </button>
         </div>
       </div>
@@ -948,9 +982,9 @@ function ProtectedNotice() {
           Comprás un número y lo usás en tu WhatsApp Business.
         </strong>
         <div style={{ marginTop: 3, color: "var(--text-2)" }}>
-          El cobro se agrega a tu suscripción de Zero. La activación final en
-          WhatsApp (verificación por voz) la hacés desde business.facebook.com —
-          te guiamos paso a paso después de la compra.
+          El número es una suscripción mensual aparte que pagás con tarjeta. La
+          activación final en WhatsApp (verificación por voz) la hacés desde
+          business.facebook.com — te guiamos paso a paso después de la compra.
         </div>
       </div>
     </div>

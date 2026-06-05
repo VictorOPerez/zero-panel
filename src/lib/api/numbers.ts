@@ -39,15 +39,18 @@ export async function searchAvailableNumbers(
   return res.items ?? [];
 }
 
-export async function buyTenantNumber(
+// Inicia la compra: el backend devuelve la URL de Stripe Checkout. El panel
+// redirige al usuario; el número se aprovisiona recién cuando el pago se
+// confirma (webhook). success_url/cancel_url los pasa el panel (su propio origin).
+export async function startNumberCheckout(
   tenantId: string,
-  body: BuyNumberInput
-): Promise<TenantNumber> {
-  const res = await api.post<SingleEnvelope>(
+  body: BuyNumberInput & { success_url?: string; cancel_url?: string }
+): Promise<{ checkout_url: string }> {
+  const res = await api.post<{ checkout_url: string }>(
     `/api/admin/tenants/${encodeURIComponent(tenantId)}/numbers`,
     body
   );
-  return res.number;
+  return { checkout_url: res.checkout_url };
 }
 
 export async function updateNumberForward(
