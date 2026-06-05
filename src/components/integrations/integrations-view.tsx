@@ -164,7 +164,7 @@ function StripeConnectCard({ tenantId }: { tenantId: string }) {
   return (
     <ConnectionCard
       icon={Wallet}
-      iconColor="oklch(0.72 0.16 280)"
+      accent="0.70 0.18 295"
       title="Cobros"
       badge={
         active
@@ -225,7 +225,7 @@ function NumbersCard({ tenantId }: { tenantId: string }) {
   return (
     <ConnectionCard
       icon={Phone}
-      iconColor="var(--z-cyan)"
+      accent="0.80 0.13 200"
       title="Números virtuales"
       badge={count > 0 ? { label: `${count} activo${count > 1 ? "s" : ""}`, tone: "ok" } : undefined}
       description={
@@ -255,7 +255,7 @@ function CalendarCard({ tenantId }: { tenantId: string }) {
   return (
     <ConnectionCard
       icon={CalendarClock}
-      iconColor="oklch(0.78 0.15 155)"
+      accent="0.78 0.15 155"
       title="Calendario"
       badge={connected ? { label: "Conectado", tone: "ok" } : undefined}
       description={
@@ -277,7 +277,7 @@ function CalendarCard({ tenantId }: { tenantId: string }) {
 
 function ConnectionCard({
   icon: Icon,
-  iconColor,
+  accent,
   title,
   badge,
   description,
@@ -285,13 +285,15 @@ function ConnectionCard({
   error,
 }: {
   icon: typeof Wallet;
-  iconColor: string;
+  // Triplete oklch (ej. "0.70 0.18 295") — el acento de color de la tarjeta.
+  accent: string;
   title: string;
   badge?: { label: string; tone: "ok" | "warn" };
   description: React.ReactNode;
   footer: React.ReactNode;
   error?: string | null;
 }) {
+  const accentSolid = `oklch(${accent})`;
   return (
     <div
       className="glass"
@@ -301,6 +303,9 @@ function ConnectionCard({
         flexDirection: "column",
         gap: 12,
         minHeight: 168,
+        // Color distintivo por tarjeta: borde superior, tinte de fondo y glow.
+        borderTop: `2px solid oklch(${accent} / 0.55)`,
+        background: `linear-gradient(180deg, oklch(${accent} / 0.06), transparent 60%)`,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -309,12 +314,12 @@ function ConnectionCard({
             width: 36,
             height: 36,
             borderRadius: 9,
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid var(--hair)",
+            background: `oklch(${accent} / 0.14)`,
+            border: `1px solid oklch(${accent} / 0.35)`,
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            color: iconColor,
+            color: accentSolid,
             flexShrink: 0,
           }}
         >
