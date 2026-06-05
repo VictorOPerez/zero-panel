@@ -60,9 +60,15 @@ function Numbers({ tenantId }: { tenantId: string }) {
     queryKey: ["tenant-numbers", tenantId],
     queryFn: () => listTenantNumbers(tenantId),
     // Tras volver del Checkout, el número se aprovisiona por webhook (async):
-    // poll un rato para que aparezca solo.
-    refetchInterval: success ? 4000 : false,
+    // polleamos SOLO hasta que aparezca (no para siempre).
+    refetchInterval: (q) =>
+      success && (q.state.data?.length ?? 0) === 0 ? 4000 : false,
   });
+
+  // Cuando el número ya apareció, cortamos el banner de "activando…".
+  useEffect(() => {
+    if (success && (query.data?.length ?? 0) > 0) setSuccess(null);
+  }, [success, query.data]);
 
   // Resultado del Stripe Checkout (?purchased=ok|cancel). El número aparece
   // cuando el webhook lo aprovisiona — refrescamos la lista.

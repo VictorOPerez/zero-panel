@@ -166,6 +166,7 @@ function StripeConnectCard({ tenantId }: { tenantId: string }) {
       icon={Wallet}
       accent="0.70 0.18 295"
       title="Cobros"
+      loading={statusQuery.isLoading}
       badge={
         active
           ? { label: "Conectado", tone: "ok" }
@@ -227,6 +228,7 @@ function NumbersCard({ tenantId }: { tenantId: string }) {
       icon={Phone}
       accent="0.80 0.13 200"
       title="Números virtuales"
+      loading={query.isLoading}
       badge={count > 0 ? { label: `${count} activo${count > 1 ? "s" : ""}`, tone: "ok" } : undefined}
       description={
         <>
@@ -257,6 +259,7 @@ function CalendarCard({ tenantId }: { tenantId: string }) {
       icon={CalendarClock}
       accent="0.78 0.15 155"
       title="Calendario"
+      loading={query.isLoading}
       badge={connected ? { label: "Conectado", tone: "ok" } : undefined}
       description={
         <>
@@ -283,6 +286,7 @@ function ConnectionCard({
   description,
   footer,
   error,
+  loading,
 }: {
   icon: typeof Wallet;
   // Triplete oklch (ej. "0.70 0.18 295") — el acento de color de la tarjeta.
@@ -292,6 +296,7 @@ function ConnectionCard({
   description: React.ReactNode;
   footer: React.ReactNode;
   error?: string | null;
+  loading?: boolean;
 }) {
   const accentSolid = `oklch(${accent})`;
   return (
@@ -328,7 +333,13 @@ function ConnectionCard({
         <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-0)", flex: 1 }}>
           {title}
         </div>
-        {badge && (
+        {loading && (
+          <Loader2
+            size={14}
+            style={{ animation: "spin 900ms linear infinite", color: "var(--text-3)" }}
+          />
+        )}
+        {!loading && badge && (
           <span
             style={{
               fontSize: 9.5,
@@ -363,7 +374,13 @@ function ConnectionCard({
         <div style={{ fontSize: 11.5, color: "var(--z-red)" }}>{error}</div>
       )}
 
-      <div>{footer}</div>
+      <div>
+        {loading ? (
+          <span style={{ fontSize: 12, color: "var(--text-3)" }}>Cargando…</span>
+        ) : (
+          footer
+        )}
+      </div>
     </div>
   );
 }
