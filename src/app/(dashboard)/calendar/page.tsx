@@ -1,7 +1,7 @@
-import { CalendarView } from "@/components/channels/calendar-view";
+import { NylasCalendarView } from "@/components/channels/nylas-calendar-view";
 
 export const metadata = { title: "Calendario — Zero" };
 
 export default function CalendarPage() {
-  return <CalendarView />;
+  return <NylasCalendarView />;
 }
