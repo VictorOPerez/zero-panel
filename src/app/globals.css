@@ -362,6 +362,49 @@
   }
 }
 
+/* ── Plans modal: grilla de tiers (Esencial / Pro / Escala / A medida) ── */
+.plans-modal-shell {
+  position: relative;
+  width: 100%;
+  max-width: 1140px;
+  max-height: 92vh;
+  overflow-y: auto;
+  border-radius: 14px;
+  background: linear-gradient(180deg, oklch(0.14 0.02 280) 0%, oklch(0.12 0.02 280) 100%);
+  border: 1px solid var(--hair);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+.plans-tier-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  padding: 18px 24px 22px;
+  align-items: start;
+}
+.plan-tier-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 20px 18px;
+}
+.plan-tier-card.is-highlight {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(22, 19, 32, 0.92), rgba(22, 19, 32, 0.92)) padding-box,
+    var(--aurora) border-box;
+  box-shadow: 0 14px 44px oklch(0.62 0.22 295 / 0.28);
+}
+@media (max-width: 980px) {
+  .plans-tier-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  .plans-modal-shell { max-width: 100%; max-height: 100vh; min-height: 100vh; border-radius: 0; }
+  .plans-tier-grid { grid-template-columns: 1fr; padding: 14px 16px 18px; }
+}
+
 /* ── Plans modal v2 (layout 2 columnas desktop, stack en mobile) ── */
 .plans-modal-panel-v2 {
   position: relative;
