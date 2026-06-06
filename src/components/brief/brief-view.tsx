@@ -1,13 +1,20 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpenText,
   MessageSquareText,
+  Pencil,
+  Save,
   Sparkles,
-  ShieldCheck,
+  X,
 } from "lucide-react";
-import { getTenantBrief } from "@/lib/api/brief";
+import {
+  BRIEF_MAX_LENGTH,
+  getTenantBrief,
+  updateTenantBrief,
+} from "@/lib/api/brief";
 import { PageShell, cardStyle } from "@/components/panel/page-shell";
 import { RequireTenant } from "@/components/panel/require-tenant";
 
@@ -18,56 +25,151 @@ export function BriefView() {
 }
 
 function Brief({ tenantId }: { tenantId: string }) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
   const query = useQuery({
     queryKey: ["tenant-brief", tenantId],
     queryFn: () => getTenantBrief(tenantId),
-    refetchInterval: 15_000,
+    // No refrescar mientras se edita: pisaría lo que el usuario está escribiendo.
+    refetchInterval: editing ? false : 15_000,
+  });
+
+  const mutation = useMutation({
+    mutationFn: (content: string) => updateTenantBrief(tenantId, content),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["tenant-brief", tenantId], saved);
+      queryClient.invalidateQueries({ queryKey: ["tenant-brief", tenantId] });
+      setEditing(false);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : "No se pudo guardar");
+    },
   });
 
   const brief = query.data;
   const hasContent = !!brief?.content.trim();
 
+  function startEditing() {
+    setDraft(brief?.content ?? "");
+    setError(null);
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    setEditing(false);
+    setError(null);
+    setDraft("");
+  }
+
+  const tooLong = draft.length > BRIEF_MAX_LENGTH;
+
   return (
     <PageShell
-      title="Brief del negocio"
-      subtitle="Lo que el bot sabe sobre tu negocio. Se edita conversando por WhatsApp con tu número admin."
+      title="Personalidad del bot"
+      subtitle="La identidad, el tono y el contexto que usa tu bot para responder. Es la fuente única de verdad: editala acá o por WhatsApp."
     >
       <EditViaWaNotice />
 
-      {query.isLoading && (
-        <div style={loadingStyle}>Cargando brief…</div>
-      )}
+      {query.isLoading && <div style={loadingStyle}>Cargando…</div>}
 
-      {!query.isLoading && !hasContent && <EmptyState />}
-
-      {!query.isLoading && hasContent && brief && (
+      {!query.isLoading && editing && (
         <div
           className="glass"
-          style={{
-            ...cardStyle,
-            border: "1px solid var(--hair)",
-          }}
+          style={{ ...cardStyle, border: "1px solid var(--hair)" }}
         >
           <div style={metaRow}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <BookOpenText
-                size={14}
-                style={{ color: "var(--z-cyan)" }}
-              />
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-0)" }}>
-                Brief vigente
+              <Pencil size={14} style={{ color: "var(--z-cyan)" }} />
+              <span
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  color: "var(--text-0)",
+                }}
+              >
+                Editando personalidad
+              </span>
+            </div>
+            <span style={{ ...mutedSmall, color: tooLong ? "#ff6b6b" : undefined }}>
+              {draft.length}/{BRIEF_MAX_LENGTH}
+            </span>
+          </div>
+
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Quién es el bot, qué hace el negocio, su tono, horarios, qué decir y qué no, FAQs, políticas…"
+            spellCheck={false}
+            style={textareaStyle}
+            autoFocus
+          />
+
+          {error && <div style={errorStyle}>{error}</div>}
+
+          <div style={actionRow}>
+            <button
+              type="button"
+              onClick={cancelEditing}
+              disabled={mutation.isPending}
+              style={secondaryBtn}
+            >
+              <X size={13} /> Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => mutation.mutate(draft.trim())}
+              disabled={mutation.isPending || tooLong}
+              style={{
+                ...primaryBtn,
+                opacity: mutation.isPending || tooLong ? 0.6 : 1,
+                cursor:
+                  mutation.isPending || tooLong ? "not-allowed" : "pointer",
+              }}
+            >
+              <Save size={13} />
+              {mutation.isPending ? "Guardando…" : "Guardar"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!query.isLoading && !editing && !hasContent && (
+        <EmptyState onCreate={startEditing} />
+      )}
+
+      {!query.isLoading && !editing && hasContent && brief && (
+        <div
+          className="glass"
+          style={{ ...cardStyle, border: "1px solid var(--hair)" }}
+        >
+          <div style={metaRow}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <BookOpenText size={14} style={{ color: "var(--z-cyan)" }} />
+              <span
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  color: "var(--text-0)",
+                }}
+              >
+                Personalidad vigente
               </span>
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <span style={chipStyle}>v{brief.version}</span>
-              <span style={mutedSmall}>
-                {brief.content.length} chars
-              </span>
+              <span style={mutedSmall}>{brief.content.length} chars</span>
               {brief.updated_at && (
                 <span style={mutedSmall}>
                   · {formatRelative(brief.updated_at)}
                 </span>
               )}
+              <button type="button" onClick={startEditing} style={editBtn}>
+                <Pencil size={12} /> Editar
+              </button>
             </div>
           </div>
 
@@ -78,7 +180,7 @@ function Brief({ tenantId }: { tenantId: string }) {
   );
 }
 
-function EmptyState() {
+function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
     <div
       style={{
@@ -95,7 +197,7 @@ function EmptyState() {
     >
       <Sparkles size={20} style={{ color: "var(--z-cyan)" }} />
       <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-0)" }}>
-        Todavía no cargaste el brief
+        Todavía no definiste la personalidad del bot
       </div>
       <div
         style={{
@@ -105,12 +207,14 @@ function EmptyState() {
           lineHeight: 1.55,
         }}
       >
-        El brief es <strong>el contexto que el bot usa para responder bien</strong>:
-        descripción del negocio, tono, horarios, FAQs, políticas, qué decir y qué
-        no. Hablale al bot por WhatsApp desde tu número admin y decile{" "}
-        <em>&quot;configurá mi negocio&quot;</em> — te va a ir preguntando y
-        armando el brief con vos.
+        Es <strong>quién es tu bot y cómo responde</strong>: identidad, tono,
+        descripción del negocio, horarios, FAQs, políticas, qué decir y qué no.
+        Escribila acá, o hablale al bot por WhatsApp desde tu número admin y
+        decile <em>&quot;configurá mi negocio&quot;</em> — te va guiando.
       </div>
+      <button type="button" onClick={onCreate} style={primaryBtn}>
+        <Pencil size={13} /> Escribir personalidad
+      </button>
     </div>
   );
 }
@@ -135,30 +239,13 @@ function EditViaWaNotice() {
       />
       <div style={{ fontSize: 12.5, color: "var(--text-1)", lineHeight: 1.55 }}>
         <strong style={{ color: "var(--text-0)" }}>
-          El brief se edita por WhatsApp, no acá.
+          Una sola personalidad, dos formas de editarla.
         </strong>
         <div style={{ marginTop: 3, color: "var(--text-2)" }}>
-          Escribile a tu número admin desde tu teléfono y decile{" "}
-          <em>&quot;configurá X&quot;</em>, <em>&quot;cambiá los horarios&quot;</em>
-          , <em>&quot;agregá esta FAQ&quot;</em>, etc. El bot te pregunta lo que
-          falte, te muestra un resumen de los cambios y pide confirmación antes de
-          guardar. Después de cada confirmación el cambio aparece acá.
-        </div>
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            marginTop: 8,
-            padding: "4px 8px",
-            borderRadius: 5,
-            border: "1px solid var(--hair)",
-            fontSize: 11,
-            color: "var(--text-2)",
-          }}
-        >
-          <ShieldCheck size={11} style={{ color: "var(--z-cyan)" }} />
-          Solo admins verificados pueden modificarlo
+          Editá el texto acá, o hablale al bot por WhatsApp desde tu número admin
+          (<em>&quot;cambiá los horarios&quot;</em>,{" "}
+          <em>&quot;agregá esta FAQ&quot;</em>). Los dos lados modifican lo mismo
+          y el cambio aplica al instante, sin reiniciar nada.
         </div>
       </div>
     </div>
@@ -222,6 +309,68 @@ const contentStyle: React.CSSProperties = {
   margin: 0,
   padding: 0,
   background: "transparent",
+};
+
+const textareaStyle: React.CSSProperties = {
+  width: "100%",
+  minHeight: 320,
+  resize: "vertical",
+  fontFamily: "var(--font-jetbrains-mono)",
+  fontSize: 12.5,
+  lineHeight: 1.6,
+  color: "var(--text-0)",
+  background: "rgba(255,255,255,0.02)",
+  border: "1px solid var(--hair)",
+  borderRadius: 8,
+  padding: "12px 14px",
+  outline: "none",
+};
+
+const actionRow: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: 8,
+  marginTop: 14,
+};
+
+const baseBtn: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  fontSize: 12.5,
+  fontWeight: 600,
+  padding: "8px 14px",
+  borderRadius: 7,
+  cursor: "pointer",
+  border: "1px solid var(--hair)",
+};
+
+const primaryBtn: React.CSSProperties = {
+  ...baseBtn,
+  background: "var(--z-cyan)",
+  color: "#04141a",
+  border: "1px solid var(--z-cyan)",
+};
+
+const secondaryBtn: React.CSSProperties = {
+  ...baseBtn,
+  background: "transparent",
+  color: "var(--text-1)",
+};
+
+const editBtn: React.CSSProperties = {
+  ...baseBtn,
+  padding: "5px 10px",
+  fontSize: 11.5,
+  background: "transparent",
+  color: "var(--z-cyan)",
+  borderColor: "oklch(0.80 0.13 200 / 0.4)",
+};
+
+const errorStyle: React.CSSProperties = {
+  marginTop: 10,
+  fontSize: 12,
+  color: "#ff6b6b",
 };
 
 const loadingStyle: React.CSSProperties = {
