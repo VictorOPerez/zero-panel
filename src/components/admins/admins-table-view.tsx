@@ -8,6 +8,7 @@ import {
   Copy,
   Loader2,
   Plus,
+  Power,
   RefreshCw,
   Trash2,
   X,
@@ -15,6 +16,7 @@ import {
 import {
   createAdmin,
   listAdmins,
+  reactivateAdmin,
   regenerateAdminCode,
   revokeAdmin,
 } from "@/lib/api/admins";
@@ -90,6 +92,31 @@ export function AdminsTableView({ tenantId }: { tenantId: string }) {
         err instanceof ApiError
           ? err.payload.error
           : "No pudimos regenerar el código."
+      );
+    },
+  });
+
+  const reactivateMut = useMutation({
+    mutationFn: (admin: AdminUser) => reactivateAdmin(tenantId, admin.id),
+    onSuccess: (res: CreateAdminResponse) => {
+      qc.setQueryData<AdminUser[] | undefined>(
+        ["admins", tenantId],
+        (prev) =>
+          (prev ?? []).map((a) => (a.id === res.admin.id ? res.admin : a))
+      );
+      setError(null);
+      setCodeModal({
+        phoneE164: res.admin.phone_e164,
+        label: res.admin.label,
+        code: res.verification_code,
+        expiresAt: res.verification_expires_at,
+      });
+    },
+    onError: (err) => {
+      setError(
+        err instanceof ApiError
+          ? (err.payload as { detail?: string }).detail || err.payload.error
+          : "No pudimos reactivar el admin."
       );
     },
   });
@@ -279,7 +306,14 @@ export function AdminsTableView({ tenantId }: { tenantId: string }) {
             Revocados ({revokedAdmins.length})
           </summary>
           <div style={{ marginTop: 8 }}>
-            <AdminTable rows={revokedAdmins} revoked />
+            <AdminTable
+              rows={revokedAdmins}
+              revoked
+              onReactivate={(a) => reactivateMut.mutate(a)}
+              reactivatingId={
+                reactivateMut.isPending ? reactivateMut.variables?.id : null
+              }
+            />
           </div>
         </details>
       )}
@@ -301,17 +335,22 @@ function AdminTable({
   rows,
   onRegenerate,
   onRevoke,
+  onReactivate,
   regeneratingId,
   revokingId,
+  reactivatingId,
   revoked = false,
 }: {
   rows: AdminUser[];
   onRegenerate?: (admin: AdminUser) => void;
   onRevoke?: (admin: AdminUser) => void;
+  onReactivate?: (admin: AdminUser) => void;
   regeneratingId?: string | null;
   revokingId?: string | null;
+  reactivatingId?: string | null;
   revoked?: boolean;
 }) {
+  const showActions = !revoked || Boolean(onReactivate);
   return (
     <div
       className="glass"
@@ -324,7 +363,7 @@ function AdminTable({
             <Th>Número</Th>
             <Th>Estado</Th>
             <Th>Agregado</Th>
-            {!revoked && <Th align="right">Acciones</Th>}
+            {showActions && <Th align="right">Acciones</Th>}
           </tr>
         </thead>
         <tbody>
@@ -359,7 +398,7 @@ function AdminTable({
                   {new Date(a.created_at).toLocaleDateString()}
                 </span>
               </Td>
-              {!revoked && (
+              {showActions && (
                 <Td align="right">
                   <div
                     style={{
@@ -368,38 +407,66 @@ function AdminTable({
                       justifyContent: "flex-end",
                     }}
                   >
-                    <button
-                      type="button"
-                      onClick={() => onRegenerate?.(a)}
-                      disabled={regeneratingId === a.id}
-                      title="Generar código nuevo"
-                      style={iconButtonStyle}
-                    >
-                      {regeneratingId === a.id ? (
-                        <Loader2
-                          size={13}
-                          style={{ animation: "spin 900ms linear infinite" }}
-                        />
-                      ) : (
-                        <RefreshCw size={13} />
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onRevoke?.(a)}
-                      disabled={revokingId === a.id}
-                      title="Revocar acceso"
-                      style={{ ...iconButtonStyle, color: "var(--z-red)" }}
-                    >
-                      {revokingId === a.id ? (
-                        <Loader2
-                          size={13}
-                          style={{ animation: "spin 900ms linear infinite" }}
-                        />
-                      ) : (
-                        <Trash2 size={13} />
-                      )}
-                    </button>
+                    {revoked ? (
+                      <button
+                        type="button"
+                        onClick={() => onReactivate?.(a)}
+                        disabled={reactivatingId === a.id}
+                        title="Reactivar admin (te da un código para pegar en WhatsApp)"
+                        style={{
+                          ...iconButtonStyle,
+                          width: "auto",
+                          padding: "5px 10px",
+                          gap: 5,
+                          color: "var(--z-green)",
+                        }}
+                      >
+                        {reactivatingId === a.id ? (
+                          <Loader2
+                            size={13}
+                            style={{ animation: "spin 900ms linear infinite" }}
+                          />
+                        ) : (
+                          <Power size={13} />
+                        )}
+                        Reactivar
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onRegenerate?.(a)}
+                          disabled={regeneratingId === a.id}
+                          title="Generar código nuevo"
+                          style={iconButtonStyle}
+                        >
+                          {regeneratingId === a.id ? (
+                            <Loader2
+                              size={13}
+                              style={{ animation: "spin 900ms linear infinite" }}
+                            />
+                          ) : (
+                            <RefreshCw size={13} />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onRevoke?.(a)}
+                          disabled={revokingId === a.id}
+                          title="Desactivar / revocar acceso"
+                          style={{ ...iconButtonStyle, color: "var(--z-red)" }}
+                        >
+                          {revokingId === a.id ? (
+                            <Loader2
+                              size={13}
+                              style={{ animation: "spin 900ms linear infinite" }}
+                            />
+                          ) : (
+                            <Trash2 size={13} />
+                          )}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </Td>
               )}

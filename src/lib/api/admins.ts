@@ -59,6 +59,21 @@ export async function revokeAdmin(
   );
 }
 
+// Reactiva un admin revocado: des-revoca + emite un código OTP nuevo (que el
+// admin pega en WhatsApp para re-verificarse). Devuelve el código en plaintext
+// UNA sola vez — mostrarlo en un modal, no persistir.
+export async function reactivateAdmin(
+  tenantId: string,
+  adminId: string
+): Promise<CreateAdminResponse> {
+  return api.post<CreateAdminResponse>(
+    `/api/admin/tenants/${encodeURIComponent(
+      tenantId
+    )}/admins/${encodeURIComponent(adminId)}/reactivate`,
+    {}
+  );
+}
+
 export async function listAdminAudit(
   tenantId: string,
   filter: ListAdminAuditFilter = {}
