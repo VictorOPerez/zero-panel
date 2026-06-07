@@ -18,7 +18,9 @@ const FEATURE_MIN_PLAN: Record<GatedFeature, "esencial" | "pro"> = {
   orders: "pro",
 };
 
-const PLAN_RANK: Record<string, number> = { esencial: 1, pro: 2, escala: 3 };
+// trial = mismo nivel que esencial → las features Pro aparecen con candado
+// también durante la prueba.
+const PLAN_RANK: Record<string, number> = { trial: 1, esencial: 1, pro: 2, escala: 3 };
 
 /**
  * ¿La feature está bloqueada para el plan actual?
