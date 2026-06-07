@@ -18,10 +18,13 @@ import {
   FileText,
   ShieldUser,
   Phone,
+  Lock,
 } from "lucide-react";
 import { IconDot } from "@/components/icons";
 import { useAuthStore } from "@/store/auth";
 import { useStripeMode } from "@/lib/hooks/use-stripe-mode";
+import { usePlanEntitlements } from "@/lib/hooks/use-plan-entitlements";
+import type { GatedFeature } from "@/lib/billing/entitlements";
 
 const ESSENTIAL_NAV_ITEMS = [
   { key: "inbox", label: "Inbox", href: "/inbox", icon: Inbox, badge: 14 },
@@ -38,10 +41,10 @@ const TOOL_MENU_SECTIONS = [
     items: [
       { key: "knowledge", label: "Conocimiento", href: "/knowledge", icon: BookOpen },
       { key: "services", label: "Servicios", href: "/services", icon: Briefcase },
-      { key: "crm", label: "Contactos", href: "/crm", icon: Users },
-      { key: "followups", label: "Followups", href: "/followups", icon: CalendarClock },
-      { key: "products", label: "Productos", href: "/products", icon: Package },
-      { key: "orders", label: "Pedidos", href: "/orders", icon: ShoppingBag },
+      { key: "crm", label: "Contactos", href: "/crm", icon: Users, feature: "crm" as GatedFeature },
+      { key: "followups", label: "Followups", href: "/followups", icon: CalendarClock, feature: "followups" as GatedFeature },
+      { key: "products", label: "Productos", href: "/products", icon: Package, feature: "products" as GatedFeature },
+      { key: "orders", label: "Pedidos", href: "/orders", icon: ShoppingBag, feature: "orders" as GatedFeature },
     ],
   },
   {
@@ -71,6 +74,7 @@ export function Sidebar() {
   // del logo "Zero" para que el operador NUNCA confunda en qué modo está,
   // independientemente de la página en la que esté navegando.
   const { isTest: stripeTestMode } = useStripeMode();
+  const { isLocked } = usePlanEntitlements();
 
   useEffect(() => {
     if (!hydrated) hydrate();
@@ -276,6 +280,7 @@ export function Sidebar() {
                     key={item.key}
                     item={item}
                     active={isActive(item.href)}
+                    locked={"feature" in item ? isLocked(item.feature) : false}
                     compact
                     onClick={() => setToolsOpen(false)}
                   />
@@ -399,18 +404,24 @@ function NavLinkItem({
   item,
   active,
   compact = false,
+  locked = false,
   onClick,
 }: {
   item: NavItem;
   active: boolean;
   compact?: boolean;
+  locked?: boolean;
   onClick?: () => void;
 }) {
   const Icon = item.icon;
+  // Locked → no navega a la feature: lleva a /billing (upsell). El bloqueo real
+  // del bot lo hace el backend; esto es el candado visual.
+  const href = locked ? "/billing" : item.href;
   return (
     <Link
-      href={item.href}
+      href={href}
       onClick={onClick}
+      title={locked ? "Disponible en el plan Pro — tocá para mejorar tu plan" : undefined}
       style={{
         display: "flex",
         alignItems: "center",
@@ -420,16 +431,17 @@ function NavLinkItem({
         background: active
           ? "linear-gradient(90deg, oklch(0.62 0.22 295 / 0.16), transparent)"
           : "transparent",
-        color: active ? "var(--text-0)" : "var(--text-1)",
+        color: locked ? "var(--text-3)" : active ? "var(--text-0)" : "var(--text-1)",
         textDecoration: "none",
         fontSize: compact ? 12.5 : 13,
         fontWeight: active ? 500 : 400,
         position: "relative",
         flexShrink: 0,
+        opacity: locked ? 0.85 : 1,
       }}
       aria-current={active ? "page" : undefined}
     >
-      {active && (
+      {active && !locked && (
         <div
           style={{
             position: "absolute",
@@ -444,24 +456,51 @@ function NavLinkItem({
       )}
       <Icon
         size={15}
-        style={{ color: active ? "var(--z-cyan)" : "var(--text-2)", flexShrink: 0 }}
+        style={{
+          color: locked ? "var(--text-3)" : active ? "var(--z-cyan)" : "var(--text-2)",
+          flexShrink: 0,
+        }}
       />
       <span className="truncate">{item.label}</span>
-      {"badge" in item && item.badge && (
+      {locked ? (
         <span
           style={{
             marginLeft: "auto",
-            fontSize: 10,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            fontSize: 9,
             fontFamily: "var(--font-jetbrains-mono)",
-            fontWeight: 600,
-            color: active ? "#0a0a0f" : "var(--text-0)",
-            background: active ? "var(--aurora)" : "rgba(255,255,255,0.08)",
-            padding: "2px 6px",
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            color: "var(--z-amber)",
+            background: "oklch(0.80 0.14 75 / 0.12)",
+            border: "1px solid oklch(0.80 0.14 75 / 0.3)",
+            padding: "1px 5px",
             borderRadius: 4,
           }}
         >
-          {item.badge}
+          <Lock size={9} />
+          PRO
         </span>
+      ) : (
+        "badge" in item &&
+        item.badge && (
+          <span
+            style={{
+              marginLeft: "auto",
+              fontSize: 10,
+              fontFamily: "var(--font-jetbrains-mono)",
+              fontWeight: 600,
+              color: active ? "#0a0a0f" : "var(--text-0)",
+              background: active ? "var(--aurora)" : "rgba(255,255,255,0.08)",
+              padding: "2px 6px",
+              borderRadius: 4,
+            }}
+          >
+            {item.badge}
+          </span>
+        )
       )}
     </Link>
   );
