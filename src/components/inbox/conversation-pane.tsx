@@ -223,6 +223,9 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
                 al mando — incluso en conversaciones resueltas: el backend la
                 reabre y pausa la IA. Antes el botón desaparecía en "resuelta"
                 y el dueño no tenía forma de intervenir. */}
+            {/* Botones de modo BIEN visibles: azul sólido cuando atiende la
+                IA (acción principal: tomar control), rojo sólido cuando está
+                el humano (estás al mando — devolver a la IA). */}
             {!humanMode && (
               <button
                 onClick={() => takeMut.mutate()}
@@ -230,18 +233,20 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 6,
-                  padding: "5px 10px",
-                  borderRadius: 5,
-                  border: "1px solid var(--hair-strong)",
-                  background: "rgba(255,255,255,0.03)",
-                  color: "var(--text-1)",
-                  fontSize: 11,
-                  fontWeight: 500,
+                  gap: 7,
+                  padding: "8px 16px",
+                  borderRadius: 7,
+                  border: "1px solid oklch(0.55 0.17 255)",
+                  background: "oklch(0.50 0.17 255)",
+                  color: "#fff",
+                  fontSize: 12.5,
+                  fontWeight: 600,
                   cursor: "pointer",
+                  boxShadow: "0 0 12px oklch(0.50 0.17 255 / 0.35)",
+                  opacity: takeMut.isPending ? 0.6 : 1,
                 }}
               >
-                <User size={12} />
+                <User size={14} />
                 <span className="hidden sm:inline">
                   {c.status === "resuelta" ? "Reabrir y tomar control" : "Tomar control"}
                 </span>
@@ -254,18 +259,20 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 6,
-                  padding: "5px 10px",
-                  borderRadius: 5,
-                  border: "1px solid var(--hair-strong)",
-                  background: "rgba(255,255,255,0.03)",
-                  color: "var(--text-1)",
-                  fontSize: 11,
-                  fontWeight: 500,
+                  gap: 7,
+                  padding: "8px 16px",
+                  borderRadius: 7,
+                  border: "1px solid oklch(0.58 0.21 25)",
+                  background: "oklch(0.52 0.20 25)",
+                  color: "#fff",
+                  fontSize: 12.5,
+                  fontWeight: 600,
                   cursor: "pointer",
+                  boxShadow: "0 0 12px oklch(0.52 0.20 25 / 0.35)",
+                  opacity: returnMut.isPending ? 0.6 : 1,
                 }}
               >
-                <IconSparkle size={12} />
+                <IconSparkle size={14} />
                 <span className="hidden sm:inline">Devolver a IA</span>
               </button>
             )}
