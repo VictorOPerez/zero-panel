@@ -77,24 +77,51 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
     },
   });
 
+  // Los errores de estas mutaciones se mostraban a NADIE (sin onError): si
+  // "Tomar control" fallaba (permiso, red, sesión), el botón no hacía nada y
+  // el dueño quedaba sin saber por qué "no lo dejó" intervenir.
   const takeMut = useMutation({
     mutationFn: () => takeControl(tenantId, c.id),
     onSuccess: () => {
+      setError(null);
       qc.invalidateQueries({ queryKey: ["conversations", tenantId] });
+    },
+    onError: (err) => {
+      setError(
+        err instanceof Error
+          ? `No pudimos tomar el control: ${err.message}`
+          : "No pudimos tomar el control. Probá de nuevo."
+      );
     },
   });
 
   const returnMut = useMutation({
     mutationFn: () => returnToAI(tenantId, c.id),
     onSuccess: () => {
+      setError(null);
       qc.invalidateQueries({ queryKey: ["conversations", tenantId] });
+    },
+    onError: (err) => {
+      setError(
+        err instanceof Error
+          ? `No pudimos devolver la conversación a la IA: ${err.message}`
+          : "No pudimos devolver la conversación a la IA. Probá de nuevo."
+      );
     },
   });
 
   const resolveMut = useMutation({
     mutationFn: () => resolveConversation(tenantId, c.id),
     onSuccess: () => {
+      setError(null);
       qc.invalidateQueries({ queryKey: ["conversations", tenantId] });
+    },
+    onError: (err) => {
+      setError(
+        err instanceof Error
+          ? `No pudimos marcarla como resuelta: ${err.message}`
+          : "No pudimos marcarla como resuelta. Probá de nuevo."
+      );
     },
   });
 
@@ -192,7 +219,11 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
             </div>
           </div>
           <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-            {!humanMode && c.status !== "resuelta" && (
+            {/* "Tomar control" SIEMPRE disponible mientras no haya un humano
+                al mando — incluso en conversaciones resueltas: el backend la
+                reabre y pausa la IA. Antes el botón desaparecía en "resuelta"
+                y el dueño no tenía forma de intervenir. */}
+            {!humanMode && (
               <button
                 onClick={() => takeMut.mutate()}
                 disabled={takeMut.isPending}
@@ -211,7 +242,9 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
                 }}
               >
                 <User size={12} />
-                <span className="hidden sm:inline">Tomar control</span>
+                <span className="hidden sm:inline">
+                  {c.status === "resuelta" ? "Reabrir y tomar control" : "Tomar control"}
+                </span>
               </button>
             )}
             {humanMode && (
