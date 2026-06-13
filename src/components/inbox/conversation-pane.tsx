@@ -44,7 +44,6 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
   const qc = useQueryClient();
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const messagesKey = ["messages", tenantId, c.id];
   const humanMode = c.status === "humano_atendiendo";
@@ -85,33 +84,48 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
     messages.length > 0 &&
     (!lastInboundAt || Date.now() - new Date(lastInboundAt).getTime() >= WINDOW_MS);
 
-  // Auto-scroll. Al ABRIR la conversación baja del todo (de una, sin animar);
-  // después, en cada mensaje nuevo solo baja si ya estabas cerca del fondo —
-  // cargar historial viejo o leer arriba no te arranca al fondo.
-  // BUG viejo: el salto inicial corría ANTES de que cargaran los mensajes, así
-  // que conversaciones con historial no bajaban. Ahora el salto se dispara
-  // cuando los mensajes ya están en pantalla (y se rearma al cambiar de chat).
+  // Auto-scroll estilo WhatsApp: la vista queda "pegada" al fondo y se MANTIENE
+  // ahí mientras el contenido crece (mensajes nuevos, imágenes/audio que cargan
+  // después y empujan el alto) — salvo que vos subas a leer historial, ahí se
+  // despega y no te arranca de vuelta.
+  // BUG viejo: el salto inicial corría una sola vez y ANTES de que cargara la
+  // media, así que con fotos la vista quedaba a mitad de camino. El
+  // ResizeObserver lo arregla: re-fija al fondo cada vez que el alto cambia.
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
-  const didInitialScrollRef = useRef(false);
-  useEffect(() => {
-    didInitialScrollRef.current = false;
-  }, [c.id]);
-  useEffect(() => {
-    if (messages.length === 0) return;
-    if (!didInitialScrollRef.current) {
-      didInitialScrollRef.current = true;
-      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
-      return;
-    }
+  const messagesContentRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+
+  const scrollToBottom = (smooth = false) => {
     const el = messagesContainerRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
-    if (nearBottom) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastMessageId]);
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+  };
+  const onMessagesScroll = () => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    // ¿Estás cerca del fondo? entonces seguimos pegados; si subiste, no.
+    stickToBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  };
+
+  // Al abrir / cambiar de conversación: re-pegar al fondo (tras el layout).
+  useEffect(() => {
+    stickToBottomRef.current = true;
+    const id = requestAnimationFrame(() => scrollToBottom(false));
+    return () => cancelAnimationFrame(id);
+  }, [c.id]);
+
+  // Mientras estemos "pegados", cualquier cambio de alto del contenido (media
+  // que termina de cargar, mensaje nuevo) re-fija al fondo al instante.
+  useEffect(() => {
+    const content = messagesContentRef.current;
+    if (!content || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (stickToBottomRef.current) scrollToBottom(false);
+    });
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [c.id]);
 
   useEffect(() => {
     if (!c.id) return;
@@ -453,9 +467,11 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
         {/* Messages */}
         <div
           ref={messagesContainerRef}
+          onScroll={onMessagesScroll}
           aria-label="Mensajes de la conversación"
           style={{ flex: 1, overflowY: "auto", padding: "20px 18px 12px" }}
         >
+         <div ref={messagesContentRef}>
           {messagesQuery.hasNextPage && (
             <div style={{ textAlign: "center", marginBottom: 12 }}>
               <button
@@ -505,7 +521,7 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
           {messages.map((m) => (
             <MessageBubble key={m.id} message={m} />
           ))}
-          <div ref={messagesEndRef} />
+         </div>
         </div>
 
         {/* Composer */}
