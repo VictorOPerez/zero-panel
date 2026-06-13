@@ -15,6 +15,32 @@ interface SearchEnvelope {
   items: AvailableNumber[];
 }
 
+export interface NumbersAvailability {
+  sellable: boolean;
+  reason: string | null;
+  message: string | null;
+}
+
+// ¿Se pueden vender números ahora mismo? El bloqueo REAL es server-side (corta
+// antes de cobrar); esto es para reflejarlo en la UI (deshabilitar el botón +
+// mostrar el mensaje) en vez de dejar que el usuario pague por algo que no
+// podemos entregar.
+export async function getNumbersAvailability(
+  tenantId: string
+): Promise<NumbersAvailability> {
+  const res = await api.get<{
+    ok: boolean;
+    sellable: boolean;
+    reason: string | null;
+    message: string | null;
+  }>(`/api/admin/tenants/${encodeURIComponent(tenantId)}/numbers/availability`);
+  return {
+    sellable: !!res.sellable,
+    reason: res.reason ?? null,
+    message: res.message ?? null,
+  };
+}
+
 export async function listTenantNumbers(tenantId: string): Promise<TenantNumber[]> {
   const res = await api.get<ListEnvelope>(
     `/api/admin/tenants/${encodeURIComponent(tenantId)}/numbers`

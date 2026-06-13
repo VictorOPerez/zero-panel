@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  getNumbersAvailability,
   startNumberCheckout,
   listTenantNumbers,
   markNumberConnected,
@@ -65,10 +66,49 @@ function Numbers({ tenantId }: { tenantId: string }) {
       success && (q.state.data?.length ?? 0) === 0 ? 4000 : false,
   });
 
+  // ¿Se pueden vender números ahora? (refleja el candado server-side en la UI)
+  const availabilityQuery = useQuery({
+    queryKey: ["numbers-availability", tenantId],
+    queryFn: () => getNumbersAvailability(tenantId),
+    staleTime: 60_000,
+  });
+  // Default optimista mientras carga: el server igual corta antes de cobrar.
+  const sellable = availabilityQuery.data?.sellable !== false;
+  const unsellableMessage =
+    availabilityQuery.data && !availabilityQuery.data.sellable
+      ? availabilityQuery.data.message
+      : null;
+
   // Cuando el número ya apareció, cortamos el banner de "activando…".
   useEffect(() => {
     if (success && (query.data?.length ?? 0) > 0) setSuccess(null);
   }, [success, query.data]);
+
+  // Timeout del polling: si tras el pago el número NO aparece en ~2 min, la
+  // compra falló (Telnyx rechazó, etc.) y el cobro se reembolsa solo. Cortamos
+  // el banner "activando…" y avisamos, en vez de girar para siempre.
+  useEffect(() => {
+    if (!success) return;
+    const POLL_TIMEOUT_MS = 120_000;
+    const deadline = Date.now() + POLL_TIMEOUT_MS;
+    const iv = setInterval(() => {
+      const count =
+        qc.getQueryData<TenantNumber[]>(["tenant-numbers", tenantId])?.length ?? 0;
+      if (count > 0) {
+        clearInterval(iv);
+        return;
+      }
+      if (Date.now() >= deadline) {
+        clearInterval(iv);
+        setSuccess(null);
+        setError(
+          "No pudimos confirmar la compra del número. Si Stripe te cobró, el cargo " +
+            "se reembolsa automáticamente. Probá de nuevo en un rato o escribinos."
+        );
+      }
+    }, 3000);
+    return () => clearInterval(iv);
+  }, [success, qc, tenantId]);
 
   // Resultado del Stripe Checkout (?purchased=ok|cancel). El número aparece
   // cuando el webhook lo aprovisiona — refrescamos la lista.
@@ -95,7 +135,9 @@ function Numbers({ tenantId }: { tenantId: string }) {
         <button
           type="button"
           onClick={() => setWizardOpen(true)}
-          style={primaryBtn}
+          disabled={!sellable}
+          title={!sellable ? unsellableMessage ?? undefined : undefined}
+          style={{ ...primaryBtn, opacity: sellable ? 1 : 0.5, cursor: sellable ? "pointer" : "not-allowed" }}
         >
           <Plus size={13} />
           Comprar número
@@ -103,6 +145,26 @@ function Numbers({ tenantId }: { tenantId: string }) {
       }
     >
       <ProtectedNotice />
+
+      {unsellableMessage && (
+        <div
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid oklch(0.80 0.14 75 / 0.4)",
+            background: "oklch(0.80 0.14 75 / 0.10)",
+            color: "var(--z-amber)",
+            fontSize: 12.5,
+            marginBottom: 14,
+          }}
+        >
+          <Info size={14} /> {unsellableMessage}
+        </div>
+      )}
 
       {error && (
         <ErrorBanner message={error} onDismiss={() => setError(null)} />
@@ -133,7 +195,7 @@ function Numbers({ tenantId }: { tenantId: string }) {
       )}
 
       {!query.isLoading && (query.data?.length ?? 0) === 0 && (
-        <PurchaseGuide onBuy={() => setWizardOpen(true)} />
+        <PurchaseGuide onBuy={() => setWizardOpen(true)} disabled={!sellable} />
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -643,7 +705,7 @@ function ActivationGuide({
 
 // Guía cuando el tenant TODAVÍA no compró número: misma estética, pero el
 // paso 1 es "Comprá tu número" (accionable) y los pasos 2-3 quedan pendientes.
-function PurchaseGuide({ onBuy }: { onBuy: () => void }) {
+function PurchaseGuide({ onBuy, disabled }: { onBuy: () => void; disabled?: boolean }) {
   return (
     <div
       style={{
@@ -704,7 +766,12 @@ function PurchaseGuide({ onBuy }: { onBuy: () => void }) {
             suscripción mensual que podés cancelar cuando quieras.
           </span>
           <div style={{ marginTop: 10 }}>
-            <button type="button" onClick={onBuy} style={primaryBtn}>
+            <button
+              type="button"
+              onClick={onBuy}
+              disabled={disabled}
+              style={{ ...primaryBtn, opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+            >
               <Plus size={13} /> Comprar número
             </button>
           </div>
