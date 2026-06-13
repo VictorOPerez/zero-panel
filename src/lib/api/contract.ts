@@ -193,6 +193,10 @@ export interface TenantStatusReport {
   tokens_remaining: number;
   usage_percent: number;
   hard_cap_exceeded: boolean;
+  // Traducción amigable del cap a conversaciones. -1 = ilimitado.
+  estimated_conversations_total?: number;
+  estimated_conversations_used?: number;
+  estimated_conversations_remaining?: number;
   stripe_subscription_status?: string;
   override?: TenantBillingOverride;
 }

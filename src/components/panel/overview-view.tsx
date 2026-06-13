@@ -16,7 +16,7 @@ import { getTenantSubscriptionStatus } from "@/lib/api/billing";
 import { PageShell, cardStyle } from "./page-shell";
 import { RequireTenant } from "./require-tenant";
 import { BusinessInfoModal } from "./business-info-modal";
-import type { TenantStatus } from "@/lib/api/contract";
+import type { TenantStatus, TenantStatusReport } from "@/lib/api/contract";
 
 export function OverviewView() {
   return (
@@ -105,13 +105,9 @@ function OverviewContent({ tenantId }: { tenantId: string }) {
           tone={status?.can_serve ? "green" : "red"}
         />
         <KpiCard
-          label="Uso de tokens"
+          label="Uso del plan"
           value={status ? `${Math.round(status.usage_percent)}%` : "—"}
-          hint={
-            status
-              ? `${status.tokens_used_this_period.toLocaleString()} / ${status.monthly_token_limit.toLocaleString()}`
-              : "Consumo del período"
-          }
+          hint={status ? usageHint(status) : "Consumo del período"}
           tone={
             status && status.usage_percent > 90
               ? "red"
@@ -180,6 +176,14 @@ function OverviewContent({ tenantId }: { tenantId: string }) {
       </div>
     </PageShell>
   );
+}
+
+// Uso en conversaciones (lenguaje del cliente), no en tokens. -1 / muy alto = ilimitado.
+function usageHint(s: TenantStatusReport): string {
+  const total = s.estimated_conversations_total ?? -1;
+  if (total < 0 || total > 50_000) return "Conversaciones ilimitadas";
+  const used = s.estimated_conversations_used ?? 0;
+  return `≈ ${used.toLocaleString("es-AR")} de ${total.toLocaleString("es-AR")} conversaciones`;
 }
 
 function humanStatus(s: TenantStatus): string {

@@ -21,6 +21,7 @@ import {
   Lock,
 } from "lucide-react";
 import { IconDot } from "@/components/icons";
+import { SidebarUsage } from "@/components/sidebar-usage";
 import { useAuthStore } from "@/store/auth";
 import { useStripeMode } from "@/lib/hooks/use-stripe-mode";
 import { usePlanEntitlements } from "@/lib/hooks/use-plan-entitlements";
@@ -243,6 +244,8 @@ export function Sidebar() {
       </nav>
 
       <div style={{ flex: 1, minHeight: 8 }} />
+
+      <SidebarUsage tenantId={activeTenantId} />
 
       <div style={{ position: "relative", marginBottom: 8 }}>
         {toolsOpen && (
