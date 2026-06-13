@@ -14,6 +14,7 @@ import {
   Check,
   ChevronLeft,
   Loader2,
+  X,
 } from "lucide-react";
 import { UserAvatar } from "@/components/avatar";
 import { ChannelIcon } from "@/components/channel-icon";
@@ -137,11 +138,32 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
     },
   });
 
-  // Enviar adjunto (foto/video/audio/pdf) cuando el humano tomó el control.
-  // El backend lo sube a Cloudinary y lo manda por WhatsApp; vuelve como un
-  // mensaje 'human' con media que cae en el cache igual que el texto.
+  // Adjuntar archivo (foto/video/audio/pdf) en modo humano. Como en WhatsApp:
+  // elegir el archivo NO lo manda — queda en preview con un caption opcional y
+  // recién sale al apretar Enviar (o se cancela con la X). El backend lo sube a
+  // Cloudinary y lo manda por WhatsApp; vuelve como mensaje 'human' con media.
   const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+
+  const clearPending = () => {
+    setPendingPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setPendingFile(null);
+  };
+  // Revocar el object URL al desmontar / cambiar de conversación.
+  useEffect(() => {
+    return () => {
+      setPendingPreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
+  }, [c.id]);
+
   const appendToCache = (m: Message) => {
     qc.setQueryData<InfiniteData<Message[]> | undefined>(messagesKey, (prev) => {
       if (!prev || prev.pages.length === 0) return prev;
@@ -152,18 +174,21 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
     });
   };
   const sendMediaMut = useMutation({
-    mutationFn: async (file: File) => {
-      const content_base64 = await fileToBase64(file);
+    mutationFn: async (vars: { file: File; caption: string }) => {
+      const content_base64 = await fileToBase64(vars.file);
       return sendMediaMessage(tenantId, c.id, {
         content_base64,
-        mime: file.type || "application/octet-stream",
-        kind: mediaKindFromMime(file.type || ""),
-        filename: file.name,
+        mime: vars.file.type || "application/octet-stream",
+        kind: mediaKindFromMime(vars.file.type || ""),
+        filename: vars.file.name,
+        caption: vars.caption || undefined,
       });
     },
     onSuccess: (m) => {
       appendToCache(m);
       setError(null);
+      setText("");
+      clearPending();
     },
     onError: (err) => {
       setError(
@@ -184,7 +209,13 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
       setError("El archivo supera el límite de 16 MB.");
       return;
     }
-    sendMediaMut.mutate(file);
+    setError(null);
+    clearPending();
+    setPendingFile(file);
+    // Preview local para imagen/video (no re-subimos hasta enviar).
+    if (file.type.startsWith("image/") || file.type.startsWith("video/")) {
+      setPendingPreview(URL.createObjectURL(file));
+    }
   }
 
   // Los errores de estas mutaciones se mostraban a NADIE (sin onError): si
@@ -236,8 +267,16 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
   });
 
   function handleSend() {
+    if (!humanMode || outside24h) return;
+    // Si hay un archivo en preview, el botón Enviar lo manda (con el texto como
+    // caption). Sin archivo, manda texto normal.
+    if (pendingFile) {
+      if (sendMediaMut.isPending) return;
+      sendMediaMut.mutate({ file: pendingFile, caption: text.trim() });
+      return;
+    }
     const trimmed = text.trim();
-    if (!trimmed || outside24h || sendMut.isPending) return;
+    if (!trimmed || sendMut.isPending) return;
     sendMut.mutate({ text: trimmed });
   }
 
@@ -531,16 +570,101 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
               </span>
             </div>
 
+            {/* Preview del adjunto en cola: NO se envió todavía — sale al
+                apretar Enviar; la X lo cancela (como en WhatsApp). */}
+            {pendingFile && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: 8,
+                  borderRadius: 6,
+                  border: "1px solid var(--hair-strong)",
+                  background: "rgba(255,255,255,0.03)",
+                }}
+              >
+                {pendingPreview && pendingFile.type.startsWith("image/") ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={pendingPreview}
+                    alt="Adjunto"
+                    style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 5, flexShrink: 0 }}
+                  />
+                ) : pendingPreview && pendingFile.type.startsWith("video/") ? (
+                  <video
+                    src={pendingPreview}
+                    style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 5, flexShrink: 0 }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 5,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: "rgba(255,255,255,0.05)",
+                      fontSize: 18,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {pendingFile.type.startsWith("audio/") ? "🎙️" : "📄"}
+                  </div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--text-0)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {pendingFile.name}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-3)", fontFamily: "var(--font-jetbrains-mono)" }}>
+                    {(pendingFile.size / 1024 / 1024).toFixed(2)} MB · listo para enviar
+                  </div>
+                </div>
+                <button
+                  aria-label="Cancelar adjunto"
+                  title="Cancelar"
+                  onClick={clearPending}
+                  disabled={sendMediaMut.isPending}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 24,
+                    height: 24,
+                    borderRadius: 5,
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--text-2)",
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  }}
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            )}
+
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              disabled={!humanMode || outside24h || sendMut.isPending}
+              disabled={!humanMode || outside24h || sendMut.isPending || sendMediaMut.isPending}
               placeholder={
                 !humanMode
                   ? 'Pulsá "Tomar control" para escribir como humano.'
                   : outside24h
                     ? "Fuera de la ventana de 24 h de WhatsApp."
-                    : "Escribí tu mensaje…"
+                    : pendingFile
+                      ? "Agregá un texto al archivo (opcional)…"
+                      : "Escribí tu mensaje…"
               }
               rows={2}
               aria-label="Escribir mensaje"
@@ -615,7 +739,13 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
               </kbd>
               <button
                 aria-label="Enviar mensaje"
-                disabled={!humanMode || outside24h || sendMut.isPending || !text.trim()}
+                disabled={
+                  !humanMode ||
+                  outside24h ||
+                  sendMut.isPending ||
+                  sendMediaMut.isPending ||
+                  (!pendingFile && !text.trim())
+                }
                 onClick={handleSend}
                 style={{
                   display: "inline-flex",
@@ -629,10 +759,17 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
                   fontSize: 11,
                   fontWeight: 600,
                   cursor: "pointer",
-                  opacity: !humanMode || outside24h || sendMut.isPending ? 0.5 : 1,
+                  opacity:
+                    !humanMode ||
+                    outside24h ||
+                    sendMut.isPending ||
+                    sendMediaMut.isPending ||
+                    (!pendingFile && !text.trim())
+                      ? 0.5
+                      : 1,
                 }}
               >
-                {sendMut.isPending ? (
+                {sendMut.isPending || sendMediaMut.isPending ? (
                   <Loader2 size={12} style={{ animation: "spin 900ms linear infinite" }} />
                 ) : (
                   <Send size={12} />
