@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { connectSocket, disconnectSocket, subscribeConversationRoom } from "./client";
 import type { Message } from "@/lib/api/types";
+import { coerceDeliveryStatus, coerceMediaType } from "@/lib/api/conversations";
 import type { RealtimeBackendMessage } from "./events";
 
 function mapMessage(m: RealtimeBackendMessage): Message {
@@ -13,6 +14,9 @@ function mapMessage(m: RealtimeBackendMessage): Message {
     from: m.from,
     text: m.text,
     sentAt: m.sent_at,
+    mediaUrl: m.media_url ?? undefined,
+    mediaType: coerceMediaType(m.media_type),
+    deliveryStatus: coerceDeliveryStatus(m.delivery_status),
   };
 }
 
@@ -29,6 +33,26 @@ function appendToMessagesCache(
   const pages = prev.pages.slice();
   pages[0] = [...pages[0], mapped];
   return { ...prev, pages };
+}
+
+// Actualiza el estado de entrega ✓✓ de un mensaje ya en cache (por id), sin
+// refetchear. Si el mensaje no está cargado, no hace nada (se traerá fresco
+// al abrir la conversación).
+function applyDeliveryStatus(
+  prev: MessagesCache | undefined,
+  messageId: string,
+  status: Message["deliveryStatus"]
+): MessagesCache | undefined {
+  if (!prev) return prev;
+  let changed = false;
+  const pages = prev.pages.map((page) =>
+    page.map((m) => {
+      if (m.id !== messageId || m.deliveryStatus === status) return m;
+      changed = true;
+      return { ...m, deliveryStatus: status };
+    })
+  );
+  return changed ? { ...prev, pages } : prev;
 }
 
 export function useRealtime(tenantId: string | null | undefined): void {
@@ -87,6 +111,19 @@ export function useRealtime(tenantId: string | null | undefined): void {
       invalidateConversations();
     };
 
+    const onMessageStatus = (payload: {
+      conversationId: string;
+      messageId: string;
+      status: string;
+    }) => {
+      const status = coerceDeliveryStatus(payload.status);
+      if (!status) return;
+      const messagesKey = ["messages", tenantId, payload.conversationId];
+      qc.setQueryData<MessagesCache>(messagesKey, (prev) =>
+        applyDeliveryStatus(prev, payload.messageId, status)
+      );
+    };
+
     const onConversationNew = () => {
       invalidateConversations();
     };
@@ -97,12 +134,14 @@ export function useRealtime(tenantId: string | null | undefined): void {
 
     socket.on("message:new", onMessage);
     socket.on("conversation:status", onStatus);
+    socket.on("message:status", onMessageStatus);
     socket.on("conversation:new", onConversationNew);
     socket.on("request:new", onRequestNew);
 
     return () => {
       socket.off("message:new", onMessage);
       socket.off("conversation:status", onStatus);
+      socket.off("message:status", onMessageStatus);
       socket.off("conversation:new", onConversationNew);
       socket.off("request:new", onRequestNew);
       if (pendingInvalidateRef.current) {

@@ -36,6 +36,14 @@ export const ConversationSchema = z.object({
 });
 export type Conversation = z.infer<typeof ConversationSchema>;
 
+// Estado de entrega ✓✓ de un mensaje saliente. null/undefined = sin tracking
+// (mensajes viejos o enviados por un carril que no captura el wamid).
+export const DeliveryStatusSchema = z.enum(["sent", "delivered", "read", "failed"]);
+export type DeliveryStatus = z.infer<typeof DeliveryStatusSchema>;
+
+export const MediaTypeSchema = z.enum(["image", "audio"]);
+export type MediaType = z.infer<typeof MediaTypeSchema>;
+
 export const MessageSchema = z.object({
   id: z.string(),
   conversationId: z.string(),
@@ -44,6 +52,11 @@ export const MessageSchema = z.object({
   source: MessageHumanSourceSchema.optional(),
   text: z.string(),
   sentAt: z.string().datetime(),
+  // Media real del cliente (foto/audio en Cloudinary) para mostrar en el inbox.
+  mediaUrl: z.string().optional(),
+  mediaType: MediaTypeSchema.optional(),
+  // Estado de entrega del mensaje saliente.
+  deliveryStatus: DeliveryStatusSchema.optional(),
   toolCall: z
     .object({ name: z.string(), durationMs: z.number() })
     .optional(),

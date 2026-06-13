@@ -7,6 +7,9 @@ export interface RealtimeBackendMessage {
   role: string;
   text: string;
   sent_at: string;
+  media_url?: string | null;
+  media_type?: string | null;
+  delivery_status?: string | null;
   tool_call?: { name: string; args: unknown } | null;
 }
 
@@ -48,6 +51,11 @@ export interface ServerToClientEvents {
   "conversation:status": (payload: {
     conversationId: string;
     status: ConversationStatus;
+  }) => void;
+  "message:status": (payload: {
+    conversationId: string;
+    messageId: string;
+    status: string;
   }) => void;
   "conversation:new": (payload: {
     conversationId: string;

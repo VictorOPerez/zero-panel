@@ -1,5 +1,24 @@
 import { api } from "./client";
-import type { Channel, Conversation, ConversationStatus, Message, MessageFrom } from "./types";
+import type {
+  Channel,
+  Conversation,
+  ConversationStatus,
+  DeliveryStatus,
+  MediaType,
+  Message,
+  MessageFrom,
+} from "./types";
+
+// Coerción defensiva: el backend manda strings; solo aceptamos los valores
+// conocidos (los demás → undefined, la burbuja degrada a solo texto / sin ✓✓).
+export function coerceMediaType(v: unknown): MediaType | undefined {
+  return v === "image" || v === "audio" ? v : undefined;
+}
+export function coerceDeliveryStatus(v: unknown): DeliveryStatus | undefined {
+  return v === "sent" || v === "delivered" || v === "read" || v === "failed"
+    ? v
+    : undefined;
+}
 
 interface BackendConversation {
   id: string;
@@ -28,6 +47,10 @@ interface BackendMessage {
   role: string;
   text: string;
   sent_at: string;
+  media_url?: string | null;
+  media_type?: string | null;
+  delivery_status?: string | null;
+  source?: "panel" | "direct_whatsapp" | null;
   tool_call: { name: string; args: unknown } | null;
 }
 
@@ -51,8 +74,12 @@ function mapMessage(m: BackendMessage): Message {
     id: m.id,
     conversationId: m.conversation_id,
     from: m.from,
+    source: m.source ?? undefined,
     text: m.text,
     sentAt: m.sent_at,
+    mediaUrl: m.media_url ?? undefined,
+    mediaType: coerceMediaType(m.media_type),
+    deliveryStatus: coerceDeliveryStatus(m.delivery_status),
   };
 }
 

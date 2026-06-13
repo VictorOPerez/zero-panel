@@ -17,9 +17,49 @@ function renderText(text: string) {
   );
 }
 
+// Cuando hay imagen real, el `content` suele traer la descripción de Gemini
+// entre corchetes ("[Imagen del cliente: …]") que ya no aporta (se ve la foto).
+// La quitamos y dejamos solo lo que escribió el cliente (su caption, si hubo).
+function cleanImageCaption(text: string): string {
+  return text.replace(/\[Imagen del cliente:[^\]]*\]/g, "").trim();
+}
+
+// ✓ enviado · ✓✓ entregado · ✓✓ (cian) leído · ⚠ falló. Solo en salientes.
+function DeliveryTicks({ status }: { status: NonNullable<Message["deliveryStatus"]> }) {
+  if (status === "failed") {
+    return (
+      <span title="No se pudo entregar" style={{ color: "var(--z-red, #ff6b6b)" }}>
+        ⚠
+      </span>
+    );
+  }
+  const read = status === "read";
+  const glyph = status === "sent" ? "✓" : "✓✓";
+  const label =
+    status === "sent" ? "Enviado" : status === "delivered" ? "Entregado" : "Leído";
+  return (
+    <span
+      title={label}
+      style={{
+        color: read ? "var(--z-cyan)" : "var(--text-3)",
+        letterSpacing: -1,
+        fontWeight: 600,
+      }}
+    >
+      {glyph}
+    </span>
+  );
+}
+
 export function MessageBubble({ message: m }: { message: Message }) {
   const isUser = m.from === "user";
   const isZero = m.from === "zero";
+  const isOutbound = isZero || m.from === "human";
+  const hasImage = m.mediaType === "image" && !!m.mediaUrl;
+  const hasAudio = m.mediaType === "audio" && !!m.mediaUrl;
+  // Texto a mostrar: en imágenes, sin el corchete de descripción; en el resto,
+  // tal cual (el audio conserva su transcripción, que es útil).
+  const displayText = hasImage ? cleanImageCaption(m.text) : m.text;
 
   return (
     <div
@@ -82,7 +122,38 @@ export function MessageBubble({ message: m }: { message: Message }) {
             overflowWrap: "break-word",
           }}
         >
-          {renderText(m.text)}
+          {hasImage && (
+            <a
+              href={m.mediaUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ display: "block", marginBottom: displayText ? 6 : 0 }}
+            >
+              {/* La URL viene de nuestro Cloudinary (no del cliente). */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={m.mediaUrl}
+                alt="Imagen del cliente"
+                loading="lazy"
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: 280,
+                  borderRadius: 8,
+                  display: "block",
+                  objectFit: "cover",
+                }}
+              />
+            </a>
+          )}
+          {hasAudio && (
+            <audio
+              controls
+              preload="none"
+              src={m.mediaUrl}
+              style={{ width: 220, marginBottom: displayText ? 6 : 0, display: "block" }}
+            />
+          )}
+          {displayText && renderText(displayText)}
         </div>
         <div
           style={{
@@ -105,6 +176,9 @@ export function MessageBubble({ message: m }: { message: Message }) {
             <span>
               · {m.toolCall.name} · {m.toolCall.durationMs}ms
             </span>
+          )}
+          {isOutbound && m.deliveryStatus && (
+            <DeliveryTicks status={m.deliveryStatus} />
           )}
         </div>
       </div>
