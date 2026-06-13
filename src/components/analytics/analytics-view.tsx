@@ -1,16 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { User } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { IconDot, IconSparkle } from "@/components/icons";
+import { IconDot } from "@/components/icons";
 import { getAnalytics, type AnalyticsPeriod } from "@/lib/api/analytics";
 import { useAuthStore } from "@/store/auth";
 
 const PERIODS = ["24h", "7d", "30d", "90d"] as const satisfies readonly AnalyticsPeriod[];
 type Period = (typeof PERIODS)[number];
 
-const EMPTY_SERIES = Array(24).fill(0) as number[];
+const PERIOD_LABEL: Record<Period, string> = {
+  "24h": "Últimas 24 horas",
+  "7d": "Últimos 7 días",
+  "30d": "Últimos 30 días",
+  "90d": "Últimos 90 días",
+};
+
+const SERIES_LABEL: Record<Period, string> = {
+  "24h": "Por hora",
+  "7d": "Por día",
+  "30d": "Por día",
+  "90d": "Por semana",
+};
 
 export function AnalyticsView() {
   const [period, setPeriod] = useState<Period>("7d");
@@ -24,9 +35,11 @@ export function AnalyticsView() {
   });
 
   const kpis = query.data?.kpis ?? [];
-  const series = query.data?.series?.length ? query.data.series : EMPTY_SERIES;
+  const series = query.data?.series ?? [];
   const byChannel = query.data?.byChannel ?? [];
-  const csat = query.data?.csat ?? { score: 0, count: 0 };
+  const breakdown = query.data?.breakdown;
+
+  const hasActivity = series.some((v) => v > 0) || kpis.some((k) => Number(k.value) > 0);
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "24px 28px 40px" }}>
@@ -43,7 +56,7 @@ export function AnalyticsView() {
         <div>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: -0.3 }}>Analytics</h1>
           <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 2 }}>
-            Últimos {period} · Aurora Bazar
+            {PERIOD_LABEL[period]}
           </div>
         </div>
         <div
@@ -74,182 +87,161 @@ export function AnalyticsView() {
         </div>
       </div>
 
-      {/* KPIs */}
-      <div
-        className="grid-kpis"
-        style={{ marginTop: 18 }}
-        role="list"
-        aria-label="Indicadores clave"
-      >
-        {kpis.map((k) => (
-          <KpiCard key={k.label} kpi={k} series={series} />
-        ))}
-      </div>
-
-      {/* Charts */}
-      <div className="grid-chart-2" style={{ marginTop: 14 }}>
-        <div className="glass" style={{ padding: 16, borderRadius: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>Volumen de conversaciones</div>
-              <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>Últimas 24 horas</div>
-            </div>
-            <div style={{ display: "flex", gap: 12, fontSize: 11 }}>
-              <LegendDot color="var(--z-cyan)" label="Zero" />
-              <LegendDot color="var(--z-amber)" label="Humano" />
-            </div>
-          </div>
-          <AreaChart data={series} />
+      {query.isLoading ? (
+        <div style={{ padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 12 }}>
+          Cargando métricas…
         </div>
-
-        <div className="glass" style={{ padding: 16, borderRadius: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Distribución por canal</div>
-          {byChannel.map((c) => (
-            <div key={c.label} style={{ marginBottom: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}>
-                <span style={{ color: "var(--text-1)" }}>{c.label}</span>
-                <span style={{ fontFamily: "var(--font-jetbrains-mono)", color: "var(--text-2)" }}>
-                  {c.value} · {c.pct}%
-                </span>
-              </div>
-              <div
-                style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.05)" }}
-                role="progressbar"
-                aria-valuenow={c.pct}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label={c.label}
-              >
-                <div
-                  style={{ width: `${c.pct}%`, height: "100%", borderRadius: 2, background: "var(--aurora)" }}
-                />
-              </div>
-            </div>
-          ))}
+      ) : query.isError ? (
+        <div style={{ padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 12 }}>
+          No pudimos cargar las métricas.{" "}
+          <button
+            onClick={() => query.refetch()}
+            style={{
+              border: "none",
+              background: "none",
+              color: "var(--z-cyan)",
+              cursor: "pointer",
+              textDecoration: "underline",
+              fontSize: 12,
+            }}
+          >
+            Reintentar
+          </button>
         </div>
-      </div>
-
-      {/* Bottom row */}
-      <div className="grid-chart-3" style={{ marginTop: 14 }}>
-        {/* CSAT */}
-        <div className="glass" style={{ padding: 16, borderRadius: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>Satisfacción (CSAT)</div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 10 }}>
-            <span
-              className="aurora-text"
-              style={{ fontFamily: "var(--font-jetbrains-mono)", fontSize: 34, fontWeight: 700 }}
-            >
-              {csat.score}
-            </span>
-            <span style={{ fontSize: 12, color: "var(--text-3)" }}>/ 5 · {csat.count} respuestas</span>
+      ) : (
+        <>
+          {/* KPIs */}
+          <div
+            className="grid-kpis"
+            style={{ marginTop: 18 }}
+            role="list"
+            aria-label="Indicadores clave"
+          >
+            {kpis.map((k) => (
+              <KpiCard key={k.label} kpi={k} series={series} />
+            ))}
           </div>
-          <div style={{ display: "flex", gap: 2, marginTop: 10 }}>
-            {[92, 56, 23, 8, 5].map((v, i) => (
-              <div key={i} style={{ flex: 1 }}>
-                <div style={{ height: 40, display: "flex", alignItems: "flex-end" }}>
-                  <div
-                    style={{
-                      width: "100%",
-                      height: `${v}%`,
-                      borderRadius: 2,
-                      background: i < 2 ? "var(--aurora)" : "rgba(255,255,255,0.08)",
-                    }}
-                    role="img"
-                    aria-label={`${5 - i} estrellas: ${v}%`}
-                  />
-                </div>
-                <div
-                  style={{
-                    fontSize: 10,
-                    textAlign: "center",
-                    color: "var(--text-3)",
-                    fontFamily: "var(--font-jetbrains-mono)",
-                    marginTop: 3,
-                  }}
-                >
-                  {5 - i}★
+
+          {/* Charts */}
+          <div className="grid-chart-2" style={{ marginTop: 14 }}>
+            <div className="glass" style={{ padding: 16, borderRadius: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>Volumen de mensajes</div>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                    {SERIES_LABEL[period]}
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
+              {hasActivity ? (
+                <AreaChart data={series} period={period} />
+              ) : (
+                <ChartEmpty />
+              )}
+            </div>
 
-        {/* Intenciones */}
-        <div className="glass" style={{ padding: 16, borderRadius: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>Intenciones más frecuentes</div>
-          <div style={{ marginTop: 10 }}>
-            {[
-              { t: "Consultas de stock", n: 62, c: "var(--z-cyan)" },
-              { t: "Precio / cotización", n: 41, c: "var(--z-purple)" },
-              { t: "Estado de envío", n: 28, c: "var(--z-cyan)" },
-              { t: "Agendar cita", n: 19, c: "var(--z-purple)" },
-              { t: "Devoluciones", n: 12, c: "var(--z-amber)" },
-            ].map((item) => (
-              <div
-                key={item.t}
-                style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, padding: "5px 0" }}
-              >
-                <IconDot color={item.c} size={6} />
-                <span style={{ flex: 1 }}>{item.t}</span>
-                <span style={{ fontFamily: "var(--font-jetbrains-mono)", color: "var(--text-2)" }}>
-                  {item.n}
-                </span>
-              </div>
-            ))}
+            <div className="glass" style={{ padding: 16, borderRadius: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Distribución por canal</div>
+              {byChannel.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--text-3)", padding: "20px 0" }}>
+                  Sin conversaciones en este período.
+                </div>
+              ) : (
+                byChannel.map((c) => (
+                  <div key={c.label} style={{ marginBottom: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}>
+                      <span style={{ color: "var(--text-1)" }}>{c.label}</span>
+                      <span style={{ fontFamily: "var(--font-jetbrains-mono)", color: "var(--text-2)" }}>
+                        {c.value} · {c.pct}%
+                      </span>
+                    </div>
+                    <div
+                      style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.05)" }}
+                      role="progressbar"
+                      aria-valuenow={c.pct}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={c.label}
+                    >
+                      <div
+                        style={{ width: `${c.pct}%`, height: "100%", borderRadius: 2, background: "var(--aurora)" }}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Escalados */}
-        <div className="glass" style={{ padding: 16, borderRadius: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>Top escalados</div>
-          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-            {[
-              "Cambio de talle ya despachado",
-              "Descuento por volumen > 10 uds",
-              "Pedido personalizado (grabado)",
-              "Facturación a extranjero",
-            ].map((t) => (
-              <div key={t} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
-                <span
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 4,
-                    background: "oklch(0.80 0.14 75 / 0.15)",
-                    border: "1px solid oklch(0.80 0.14 75 / 0.3)",
-                    color: "var(--z-amber)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  <User size={10} />
-                </span>
-                <span style={{ color: "var(--text-1)" }}>{t}</span>
-              </div>
-            ))}
-            <button
-              style={{
-                marginTop: 6,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 5,
-                padding: "5px 10px",
-                borderRadius: 5,
-                border: "1px solid var(--hair-strong)",
-                background: "rgba(255,255,255,0.03)",
-                color: "var(--text-1)",
-                fontSize: 11,
-                cursor: "pointer",
-              }}
-            >
-              <IconSparkle size={11} /> Entrenar con estos casos
-            </button>
-          </div>
-        </div>
+          {/* Mensajes por origen — dato real del backend */}
+          {breakdown && (
+            <div className="glass" style={{ padding: 16, borderRadius: 10, marginTop: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Mensajes por origen</div>
+              <OriginBars breakdown={breakdown} />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ChartEmpty() {
+  return (
+    <div
+      style={{
+        height: 160,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--text-3)",
+        fontSize: 12,
+      }}
+    >
+      Sin actividad en este período todavía.
+    </div>
+  );
+}
+
+function OriginBars({
+  breakdown,
+}: {
+  breakdown: { messages_by_user: number; messages_by_ai: number; messages_by_human: number };
+}) {
+  const rows = [
+    { label: "Clientes", value: breakdown.messages_by_user, color: "var(--text-1)" },
+    { label: "Zero (IA)", value: breakdown.messages_by_ai, color: "var(--z-cyan)" },
+    { label: "Humano (vos)", value: breakdown.messages_by_human, color: "var(--z-amber)" },
+  ];
+  const total = rows.reduce((acc, r) => acc + r.value, 0);
+  if (total === 0) {
+    return (
+      <div style={{ fontSize: 12, color: "var(--text-3)", padding: "12px 0" }}>
+        Sin mensajes en este período.
       </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {rows.map((r) => {
+        const pct = Math.round((r.value / total) * 100);
+        return (
+          <div key={r.label}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--text-1)" }}>
+                <IconDot color={r.color} size={6} />
+                {r.label}
+              </span>
+              <span style={{ fontFamily: "var(--font-jetbrains-mono)", color: "var(--text-2)" }}>
+                {r.value} · {pct}%
+              </span>
+            </div>
+            <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.05)" }}>
+              <div style={{ width: `${pct}%`, height: "100%", borderRadius: 2, background: r.color }} />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -263,11 +255,7 @@ interface KpiLike {
 
 function KpiCard({ kpi, series }: { kpi: KpiLike; series: number[] }) {
   return (
-    <div
-      role="listitem"
-      className="glass"
-      style={{ padding: 14, borderRadius: 10 }}
-    >
+    <div role="listitem" className="glass" style={{ padding: 14, borderRadius: 10 }}>
       <div
         style={{
           fontSize: 10,
@@ -285,15 +273,17 @@ function KpiCard({ kpi, series }: { kpi: KpiLike; series: number[] }) {
         >
           {kpi.value}
         </span>
-        <span
-          style={{
-            fontSize: 11,
-            fontFamily: "var(--font-jetbrains-mono)",
-            color: kpi.trend === "up" ? "var(--z-green)" : "var(--text-3)",
-          }}
-        >
-          {kpi.delta}
-        </span>
+        {kpi.delta !== "—" && (
+          <span
+            style={{
+              fontSize: 11,
+              fontFamily: "var(--font-jetbrains-mono)",
+              color: kpi.trend === "up" ? "var(--z-green)" : kpi.trend === "down" ? "var(--z-red)" : "var(--text-3)",
+            }}
+          >
+            {kpi.delta}
+          </span>
+        )}
       </div>
       <Sparkline data={series} />
     </div>
@@ -303,7 +293,10 @@ function KpiCard({ kpi, series }: { kpi: KpiLike; series: number[] }) {
 function Sparkline({ data }: { data: number[] }) {
   const w = 200;
   const h = 28;
-  const max = Math.max(...data);
+  const max = Math.max(...data, 0);
+  if (data.length < 2 || max === 0) {
+    return <div style={{ height: 28, marginTop: 8 }} aria-hidden />;
+  }
   const path = data
     .map((v, i) => {
       const x = (i / (data.length - 1)) * w;
@@ -329,24 +322,30 @@ function Sparkline({ data }: { data: number[] }) {
   );
 }
 
-function AreaChart({ data }: { data: number[] }) {
+function AreaChart({ data, period }: { data: number[]; period: Period }) {
   const w = 600;
   const h = 140;
-  const max = Math.max(...data);
+  const max = Math.max(...data, 0);
+  const safeMax = max === 0 ? 1 : max;
   const path = data
     .map((v, i) => {
-      const x = (i / (data.length - 1)) * w;
-      const y = h - (v / max) * (h - 10);
+      const x = (i / Math.max(1, data.length - 1)) * w;
+      const y = h - (v / safeMax) * (h - 10);
       return `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(" ");
+
+  // Etiquetas del eje X según el período (antes siempre decía 00:00–24:00,
+  // incorrecto para 7d/30d/90d).
+  const axisLabels = buildAxisLabels(period, data.length);
+
   return (
     <svg
       viewBox={`0 0 ${w} ${h + 22}`}
       preserveAspectRatio="none"
       style={{ width: "100%", height: 160 }}
       role="img"
-      aria-label="Gráfico de volumen de conversaciones"
+      aria-label="Gráfico de volumen de mensajes"
     >
       <defs>
         <linearGradient id="ar-fill" x1="0" x2="0" y1="0" y2="1">
@@ -366,28 +365,36 @@ function AreaChart({ data }: { data: number[] }) {
       ))}
       <path d={`${path} L ${w},${h} L 0,${h} Z`} fill="url(#ar-fill)" />
       <path d={path} fill="none" stroke="oklch(0.80 0.13 200)" strokeWidth="1.5" />
-      {["00", "04", "08", "12", "16", "20", "24"].map((t, i) => (
+      {axisLabels.map((label, i) => (
         <text
-          key={t}
-          x={(i / 6) * w}
+          key={`${label}-${i}`}
+          x={(i / Math.max(1, axisLabels.length - 1)) * w}
           y={h + 16}
           fill="rgba(255,255,255,0.35)"
           fontSize="9"
           fontFamily="JetBrains Mono, monospace"
-          textAnchor={i === 0 ? "start" : i === 6 ? "end" : "middle"}
+          textAnchor={i === 0 ? "start" : i === axisLabels.length - 1 ? "end" : "middle"}
         >
-          {t}:00
+          {label}
         </text>
       ))}
     </svg>
   );
 }
 
-function LegendDot({ color, label }: { color: string; label: string }) {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--text-2)" }}>
-      <IconDot color={color} size={7} />
-      {label}
-    </span>
-  );
+function buildAxisLabels(period: Period, count: number): string[] {
+  const now = Date.now();
+  if (period === "24h") {
+    return ["00:00", "06:00", "12:00", "18:00", "ahora"];
+  }
+  // Para series por día/semana, mostramos ~5 fechas equiespaciadas.
+  const stepMs = period === "90d" ? 7.5 * 86400_000 : 86400_000;
+  const labels: string[] = [];
+  const picks = 5;
+  for (let p = 0; p < picks; p++) {
+    const idx = Math.round((p / (picks - 1)) * (count - 1));
+    const d = new Date(now - (count - 1 - idx) * stepMs);
+    labels.push(d.toLocaleDateString("es-AR", { day: "numeric", month: "short" }));
+  }
+  return labels;
 }

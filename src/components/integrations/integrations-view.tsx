@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { PageShell, cardStyle } from "@/components/panel/page-shell";
 import { RequireTenant } from "@/components/panel/require-tenant";
+import { OnboardingChecklist } from "@/components/panel/onboarding-checklist";
 import { WhatsappBusinessCard } from "@/components/channels/whatsapp-business-card";
 import { getPaymentsProvider, connectStripe } from "@/lib/api/payments";
 import { listTenantNumbers } from "@/lib/api/numbers";
@@ -34,6 +35,8 @@ function Home({ tenantId }: { tenantId: string }) {
       title="Conexiones"
       subtitle="Conectá las piezas que tu agente usa para trabajar."
     >
+      <OnboardingChecklist tenantId={tenantId} />
+
       <TwoFacesBanner />
 
       <SectionLabel>Tu agente (WhatsApp)</SectionLabel>

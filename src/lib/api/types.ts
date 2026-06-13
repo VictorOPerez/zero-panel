@@ -83,6 +83,13 @@ export const AnalyticsSchema = z.object({
     z.object({ label: z.string(), value: z.number(), pct: z.number() })
   ),
   csat: z.object({ score: z.number(), count: z.number() }),
+  breakdown: z
+    .object({
+      messages_by_user: z.number(),
+      messages_by_ai: z.number(),
+      messages_by_human: z.number(),
+    })
+    .optional(),
   period: z.string(),
 });
 export type Analytics = z.infer<typeof AnalyticsSchema>;
