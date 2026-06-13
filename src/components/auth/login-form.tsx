@@ -32,8 +32,10 @@ export function LoginForm() {
 
   const next = params.get("next") || "/";
   const verifiedParam = params.get("verified");
-  const verifiedBanner =
-    verifiedParam === "1"
+  const resetDone = params.get("reset") === "1";
+  const verifiedBanner = resetDone
+    ? "Tu contraseña quedó actualizada. Iniciá sesión con la nueva."
+    : verifiedParam === "1"
       ? "Tu email quedó verificado. Iniciá sesión para entrar al panel."
       : verifiedParam === "pending"
         ? "Te enviamos un email con el link de verificación. Cliqueá el link y después entrá con tu password."
@@ -143,7 +145,7 @@ export function LoginForm() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <label htmlFor="password" style={authLabelStyle}>Contraseña</label>
           <Link
-            href="/login"
+            href="/forgot-password"
             style={{
               fontSize: 11,
               color: "var(--text-2)",

@@ -35,6 +35,25 @@ export function emailVerificationStatus(): Promise<{ ok: true; verified: boolean
   return api.get<{ ok: true; verified: boolean }>("/api/auth/verify-email/status");
 }
 
+export function requestPasswordReset(email: string): Promise<{ ok: true; message: string }> {
+  return api.post<{ ok: true; message: string }>(
+    "/api/auth/password/forgot",
+    { email },
+    { skipAuth: true }
+  );
+}
+
+export function resetPassword(
+  token: string,
+  password: string
+): Promise<{ ok: true; message: string }> {
+  return api.post<{ ok: true; message: string }>(
+    "/api/auth/password/reset",
+    { token, password },
+    { skipAuth: true }
+  );
+}
+
 export function me(): Promise<MeResponse> {
   return api.get<MeResponse>("/api/auth/me");
 }
