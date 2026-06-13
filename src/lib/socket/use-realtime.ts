@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { connectSocket, disconnectSocket, getSocket } from "./client";
+import { connectSocket, disconnectSocket, subscribeConversationRoom } from "./client";
 import type { Message } from "@/lib/api/types";
 import type { RealtimeBackendMessage } from "./events";
 
@@ -29,14 +29,17 @@ export function useRealtime(tenantId: string | null | undefined): void {
       message: RealtimeBackendMessage;
     }) => {
       const mapped = mapMessage(payload.message);
-      qc.setQueryData<Message[] | undefined>(
-        ["messages", tenantId, payload.conversationId],
-        (prev) => {
-          if (!prev) return prev;
-          if (prev.some((m) => m.id === mapped.id)) return prev;
-          return [...prev, mapped];
-        }
-      );
+      const messagesKey = ["messages", tenantId, payload.conversationId];
+      const existing = qc.getQueryData<Message[]>(messagesKey);
+      if (existing) {
+        qc.setQueryData<Message[]>(messagesKey, (prev) =>
+          prev!.some((m) => m.id === mapped.id) ? prev! : [...prev!, mapped]
+        );
+      } else {
+        // El fetch inicial está en vuelo (o aún no abrieron la conversación):
+        // invalidar en vez de descartar para no perder el mensaje.
+        qc.invalidateQueries({ queryKey: messagesKey });
+      }
       qc.invalidateQueries({ queryKey: ["conversations", tenantId] });
     };
 
@@ -78,9 +81,6 @@ export function useRealtime(tenantId: string | null | undefined): void {
 }
 
 export function subscribeConversation(conversationId: string): () => void {
-  const socket = getSocket();
-  socket.emit("subscribe:conversation", conversationId);
-  return () => {
-    socket.emit("unsubscribe:conversation", conversationId);
-  };
+  // Delegado al client para que la suscripción sobreviva reconexiones.
+  return subscribeConversationRoom(conversationId);
 }

@@ -87,7 +87,10 @@ export function InboxView() {
         }
       >
         {selected && tenantId ? (
+          // key: remonta el pane al cambiar de conversación — el texto a medio
+          // escribir para un cliente jamás queda cargado para otro.
           <ConversationPane
+            key={selected.id}
             tenantId={tenantId}
             conversation={selected}
             onBack={handleBack}

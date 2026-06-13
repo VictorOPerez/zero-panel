@@ -27,12 +27,12 @@ import { usePlanEntitlements } from "@/lib/hooks/use-plan-entitlements";
 import type { GatedFeature } from "@/lib/billing/entitlements";
 
 const ESSENTIAL_NAV_ITEMS = [
-  { key: "inbox", label: "Inbox", href: "/inbox", icon: Inbox, badge: 14 },
+  { key: "inbox", label: "Inbox", href: "/inbox", icon: Inbox },
   { key: "brief", label: "Brief", href: "/brief", icon: FileText },
   { key: "admins", label: "Admins WA", href: "/admins", icon: ShieldUser },
   { key: "integrations", label: "Conexiones", href: "/integrations", icon: Home },
-  { key: "numbers", label: "Numeros", href: "/numbers", icon: Phone },
-  { key: "billing", label: "Suscripcion", href: "/billing", icon: CreditCard },
+  { key: "numbers", label: "Números", href: "/numbers", icon: Phone },
+  { key: "billing", label: "Suscripción", href: "/billing", icon: CreditCard },
 ] as const;
 
 const TOOL_MENU_SECTIONS = [
@@ -50,7 +50,7 @@ const TOOL_MENU_SECTIONS = [
   {
     label: "Sistema",
     items: [
-      { key: "settings", label: "Configuracion", href: "/settings", icon: Settings },
+      { key: "settings", label: "Configuración", href: "/settings", icon: Settings },
     ],
   },
 ] as const;
@@ -223,7 +223,7 @@ export function Sidebar() {
 
       <nav
         style={{ display: "flex", flexDirection: "column", gap: 1, overflowY: "auto", minHeight: 0 }}
-        aria-label="Navegacion principal"
+        aria-label="Navegación principal"
       >
         <div
           style={{
@@ -462,7 +462,7 @@ function NavLinkItem({
         }}
       />
       <span className="truncate">{item.label}</span>
-      {locked ? (
+      {locked && (
         <span
           style={{
             marginLeft: "auto",
@@ -483,24 +483,6 @@ function NavLinkItem({
           <Lock size={9} />
           PRO
         </span>
-      ) : (
-        "badge" in item &&
-        item.badge && (
-          <span
-            style={{
-              marginLeft: "auto",
-              fontSize: 10,
-              fontFamily: "var(--font-jetbrains-mono)",
-              fontWeight: 600,
-              color: active ? "#0a0a0f" : "var(--text-0)",
-              background: active ? "var(--aurora)" : "rgba(255,255,255,0.08)",
-              padding: "2px 6px",
-              borderRadius: 4,
-            }}
-          >
-            {item.badge}
-          </span>
-        )
       )}
     </Link>
   );

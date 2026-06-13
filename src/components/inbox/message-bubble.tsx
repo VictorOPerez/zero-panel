@@ -1,14 +1,25 @@
+import { Fragment } from "react";
 import { IconSparkle } from "@/components/icons";
 import type { Message } from "@/lib/api/types";
+
+// El texto del mensaje lo escribe el CLIENTE de WhatsApp: jamás pasa por
+// innerHTML. La negrita de **…** se arma con nodos React sobre texto plano.
+function renderText(text: string) {
+  const parts = text.split(/\*\*(.+?)\*\*/g);
+  return parts.map((part, i) =>
+    i % 2 === 1 ? (
+      <strong key={i} style={{ color: "var(--z-cyan)" }}>
+        {part}
+      </strong>
+    ) : (
+      <Fragment key={i}>{part}</Fragment>
+    )
+  );
+}
 
 export function MessageBubble({ message: m }: { message: Message }) {
   const isUser = m.from === "user";
   const isZero = m.from === "zero";
-
-  const rawHtml = m.text.replace(
-    /\*\*(.+?)\*\*/g,
-    '<strong style="color:var(--z-cyan)">$1</strong>'
-  );
 
   return (
     <div
@@ -67,9 +78,12 @@ export function MessageBubble({ message: m }: { message: Message }) {
             color: "var(--text-0)",
             borderBottomRightRadius: isUser ? 2 : 10,
             borderBottomLeftRadius: isUser ? 10 : 2,
+            whiteSpace: "pre-wrap",
+            overflowWrap: "break-word",
           }}
-          dangerouslySetInnerHTML={{ __html: rawHtml }}
-        />
+        >
+          {renderText(m.text)}
+        </div>
         <div
           style={{
             display: "flex",
