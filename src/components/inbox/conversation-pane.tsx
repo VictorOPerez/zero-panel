@@ -21,6 +21,7 @@ import { ChannelIcon } from "@/components/channel-icon";
 import { IconDot, IconSparkle } from "@/components/icons";
 import { MessageBubble } from "./message-bubble";
 import {
+  compressImageToBase64,
   fileToBase64,
   listMessages,
   markConversationRead,
@@ -160,6 +161,7 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
 
   const clearPending = () => {
     setPendingPreview((prev) => {
@@ -189,10 +191,25 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
   };
   const sendMediaMut = useMutation({
     mutationFn: async (vars: { file: File; caption: string }) => {
-      const content_base64 = await fileToBase64(vars.file);
+      const isImage = (vars.file.type || "").startsWith("image/");
+      let content_base64: string;
+      let mime = vars.file.type || "application/octet-stream";
+      // Las imágenes se comprimen en el navegador antes de subir (evita el OOM
+      // del móvil con fotos grandes). Si la compresión falla, va el original.
+      if (isImage) {
+        const compressed = await compressImageToBase64(vars.file).catch(() => null);
+        if (compressed) {
+          content_base64 = compressed.base64;
+          mime = compressed.mime;
+        } else {
+          content_base64 = await fileToBase64(vars.file);
+        }
+      } else {
+        content_base64 = await fileToBase64(vars.file);
+      }
       return sendMediaMessage(tenantId, c.id, {
         content_base64,
-        mime: vars.file.type || "application/octet-stream",
+        mime,
         kind: mediaKindFromMime(vars.file.type || ""),
         filename: vars.file.name,
         caption: vars.caption || undefined,
@@ -213,14 +230,39 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
 
   function onPickFile() {
     if (!humanMode || outside24h || sendMediaMut.isPending) return;
-    fileInputRef.current?.click();
+    setAttachMenuOpen((v) => !v);
   }
+  // Abre el selector con un `accept` específico para que el celular muestre la
+  // GALERÍA / CÁMARA en vez del explorador de archivos genérico (como WhatsApp).
+  function openPicker(accept: string, capture?: string) {
+    setAttachMenuOpen(false);
+    const input = fileInputRef.current;
+    if (!input) return;
+    input.accept = accept;
+    if (capture) input.setAttribute("capture", capture);
+    else input.removeAttribute("capture");
+    input.click();
+  }
+  const ATTACH_OPTIONS: { label: string; emoji: string; accept: string; capture?: string }[] = [
+    { label: "Galería (fotos y videos)", emoji: "🖼️", accept: "image/*,video/*" },
+    { label: "Cámara", emoji: "📷", accept: "image/*", capture: "environment" },
+    { label: "Audio", emoji: "🎙️", accept: "audio/*" },
+    { label: "Documento", emoji: "📄", accept: "application/pdf,.doc,.docx,.xls,.xlsx,.txt" },
+  ];
   function onFileSelected(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = ""; // permite re-elegir el mismo archivo
     if (!file) return;
-    if (file.size > MAX_MEDIA_BYTES) {
-      setError("El archivo supera el límite de 16 MB.");
+    // Las imágenes se comprimen antes de subir, así que el original puede ser
+    // más grande (foto de celular); el resto se manda tal cual → tope 16 MB.
+    const isImage = (file.type || "").startsWith("image/");
+    const cap = isImage ? 50 * 1024 * 1024 : MAX_MEDIA_BYTES;
+    if (file.size > cap) {
+      setError(
+        isImage
+          ? "La imagen supera el límite de 50 MB."
+          : "El archivo supera el límite de 16 MB."
+      );
       return;
     }
     setError(null);
@@ -711,37 +753,94 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
                 onChange={onFileSelected}
                 style={{ display: "none" }}
               />
-              <button
-                aria-label="Adjuntar archivo"
-                title={
-                  !humanMode
-                    ? "Tomá el control para adjuntar"
-                    : outside24h
-                      ? "Fuera de la ventana de 24 h"
-                      : "Adjuntar foto, video, audio o PDF"
-                }
-                onClick={onPickFile}
-                disabled={!humanMode || outside24h || sendMediaMut.isPending}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 26,
-                  height: 26,
-                  borderRadius: 5,
-                  border: "none",
-                  background: "transparent",
-                  color: "var(--text-2)",
-                  cursor: !humanMode || outside24h ? "not-allowed" : "pointer",
-                  opacity: !humanMode || outside24h ? 0.5 : 1,
-                }}
-              >
-                {sendMediaMut.isPending ? (
-                  <Loader2 size={14} style={{ animation: "spin 900ms linear infinite" }} />
-                ) : (
-                  <Paperclip size={14} />
+              <div style={{ position: "relative", display: "inline-flex" }}>
+                <button
+                  aria-label="Adjuntar archivo"
+                  title={
+                    !humanMode
+                      ? "Tomá el control para adjuntar"
+                      : outside24h
+                        ? "Fuera de la ventana de 24 h"
+                        : "Adjuntar foto, video, audio o documento"
+                  }
+                  onClick={onPickFile}
+                  disabled={!humanMode || outside24h || sendMediaMut.isPending}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 26,
+                    height: 26,
+                    borderRadius: 5,
+                    border: "none",
+                    background: attachMenuOpen ? "rgba(255,255,255,0.08)" : "transparent",
+                    color: "var(--text-2)",
+                    cursor: !humanMode || outside24h ? "not-allowed" : "pointer",
+                    opacity: !humanMode || outside24h ? 0.5 : 1,
+                  }}
+                >
+                  {sendMediaMut.isPending ? (
+                    <Loader2 size={14} style={{ animation: "spin 900ms linear infinite" }} />
+                  ) : (
+                    <Paperclip size={14} />
+                  )}
+                </button>
+                {attachMenuOpen && (
+                  <>
+                    {/* Backdrop: un toque afuera cierra el menú. */}
+                    <div
+                      onClick={() => setAttachMenuOpen(false)}
+                      style={{ position: "fixed", inset: 0, zIndex: 40 }}
+                    />
+                    <div
+                      role="menu"
+                      className="glass"
+                      style={{
+                        position: "absolute",
+                        bottom: 34,
+                        left: 0,
+                        zIndex: 41,
+                        minWidth: 200,
+                        borderRadius: 8,
+                        border: "1px solid var(--hair-strong)",
+                        padding: 4,
+                        boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                      }}
+                    >
+                      {ATTACH_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.label}
+                          role="menuitem"
+                          onClick={() => openPicker(opt.accept, opt.capture)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            width: "100%",
+                            padding: "9px 10px",
+                            borderRadius: 6,
+                            border: "none",
+                            background: "transparent",
+                            color: "var(--text-0)",
+                            fontSize: 12.5,
+                            textAlign: "left",
+                            cursor: "pointer",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.background = "rgba(255,255,255,0.06)")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.background = "transparent")
+                          }
+                        >
+                          <span style={{ fontSize: 16 }}>{opt.emoji}</span>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 )}
-              </button>
+              </div>
               <span style={{ marginLeft: "auto" }} />
               <kbd
                 style={{

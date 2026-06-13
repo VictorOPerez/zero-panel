@@ -166,10 +166,10 @@ export function mediaKindFromMime(mime: string): OutboundMediaKind {
   return "document";
 }
 
-// Lee un File del navegador y devuelve su contenido en base64 (sin el prefijo
-// data:). Lo usa el composer para mandar adjuntos por JSON (mismo patrón que
-// la ingesta de PDFs).
-export function fileToBase64(file: File): Promise<string> {
+// Lee un Blob/File del navegador y devuelve su contenido en base64 (sin el
+// prefijo data:). Lo usa el composer para mandar adjuntos por JSON (mismo
+// patrón que la ingesta de PDFs).
+export function fileToBase64(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("No pudimos leer el archivo."));
@@ -180,6 +180,42 @@ export function fileToBase64(file: File): Promise<string> {
     };
     reader.readAsDataURL(file);
   });
+}
+
+// Comprime/redimensiona una imagen en el navegador antes de subirla (como hace
+// WhatsApp): las fotos del celular pesan 5-12MB y convertirlas a base64 enteras
+// revienta la memoria del móvil ("memoria insuficiente"). Redimensiona al lado
+// mayor = maxDim y re-codifica JPEG. Devuelve base64 listo + su mime. Si algo
+// falla, el caller cae al archivo original.
+export async function compressImageToBase64(
+  file: File,
+  maxDim = 1600,
+  quality = 0.82
+): Promise<{ base64: string; mime: string }> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const longest = Math.max(img.naturalWidth, img.naturalHeight) || 1;
+    const scale = Math.min(1, maxDim / longest);
+    const w = Math.max(1, Math.round(img.naturalWidth * scale));
+    const h = Math.max(1, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas_unavailable");
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", quality)
+    );
+    if (!blob) throw new Error("compress_failed");
+    const base64 = await fileToBase64(blob);
+    return { base64, mime: "image/jpeg" };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 export async function sendMediaMessage(
