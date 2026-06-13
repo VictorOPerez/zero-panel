@@ -794,7 +794,6 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
                     />
                     <div
                       role="menu"
-                      className="glass"
                       style={{
                         position: "absolute",
                         bottom: 34,
@@ -802,9 +801,12 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
                         zIndex: 41,
                         minWidth: 200,
                         borderRadius: 8,
+                        // Fondo SÓLIDO (no glass) — el translúcido se confundía
+                        // con el fondo del chat y no se leían las opciones.
+                        background: "var(--bg-2)",
                         border: "1px solid var(--hair-strong)",
                         padding: 4,
-                        boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                        boxShadow: "0 8px 24px rgba(0,0,0,0.55)",
                       }}
                     >
                       {ATTACH_OPTIONS.map((opt) => (
