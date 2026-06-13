@@ -12,10 +12,10 @@ import type { BillingPlan } from "@/lib/api/contract";
 export const DEFAULT_PLAN: Required<
   Pick<BillingPlan, "id" | "name" | "price_id" | "monthly_price_usd" | "token_limit">
 > & { description: string; features: string[] } = {
-  id: "basico",
-  name: "Básico",
+  id: "esencial",
+  name: "Esencial",
   price_id: "",
-  monthly_price_usd: 59,
+  monthly_price_usd: 149,
   token_limit: 3_000_000,
   description: "Automatizá tu atención 24/7 y multiplicá las reservas.",
   features: [

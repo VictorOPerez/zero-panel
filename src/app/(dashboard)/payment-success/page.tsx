@@ -5,20 +5,32 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
+import { syncSubscription } from "@/lib/api/billing";
 
 /**
  * Landing post-Stripe checkout. Stripe redirige acá con el payment confirmado.
- * Invalidamos la query del tenant-status para que el webhook de Stripe (que
- * actualiza el billing en backend) se refleje en cuanto el usuario vuelva al
- * dashboard.
+ * Además de invalidar queries, pedimos al backend que reconcilie la sub contra
+ * Stripe (sync-subscription): si el webhook se perdió, el plan queda activo
+ * igual — el usuario nunca aterriza en "pagué pero sigo vencido".
  */
 export default function PaymentSuccessPage() {
   const tenantId = useAuthStore((s) => s.activeTenantId);
   const qc = useQueryClient();
 
   useEffect(() => {
-    qc.invalidateQueries({ queryKey: ["tenant-status", tenantId] });
-    qc.invalidateQueries({ queryKey: ["billing", tenantId] });
+    if (!tenantId) return;
+    let cancelled = false;
+    syncSubscription(tenantId)
+      .catch(() => undefined)
+      .finally(() => {
+        if (cancelled) return;
+        qc.invalidateQueries({ queryKey: ["tenant-status", tenantId] });
+        qc.invalidateQueries({ queryKey: ["billing", tenantId] });
+        qc.invalidateQueries({ queryKey: ["subscription", tenantId] });
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [qc, tenantId]);
 
   return (

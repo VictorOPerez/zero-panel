@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { X, Check, Loader2, Sparkles, ArrowRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { listPlans } from "@/lib/api/billing";
@@ -26,7 +27,17 @@ export function PlansModal({ open, onClose }: Props) {
     staleTime: 5 * 60_000,
   });
 
-  const { checkout, busy, checkoutVariables, error } = useBillingActions(tenantId);
+  const { checkout, busy, checkoutVariables, error, notice, resetNotice } =
+    useBillingActions(tenantId);
+
+  // Upgrade in-place (sin redirect a Stripe): cerramos el modal — el banner
+  // de /billing y el estado del sidebar ya se refrescan solos.
+  useEffect(() => {
+    if (notice && open) {
+      resetNotice();
+      onClose();
+    }
+  }, [notice, open, onClose, resetNotice]);
 
   if (!open) return null;
 

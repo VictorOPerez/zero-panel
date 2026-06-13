@@ -6,9 +6,11 @@ import { useSearchParams } from "next/navigation";
 import { Check, ExternalLink, Loader2, X, Zap } from "lucide-react";
 import {
   cancelSubscription,
+  getSubscriptionInfo,
   getTenantBilling,
   getTenantSubscriptionStatus,
   listPlans,
+  resumeSubscription,
 } from "@/lib/api/billing";
 import { ApiError } from "@/lib/api/client";
 import { PageShell, cardStyle } from "@/components/panel/page-shell";
@@ -54,6 +56,8 @@ function Billing({ tenantId }: { tenantId: string }) {
     }
   }, [searchParams, qc, tenantId]);
 
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+
   const billingQuery = useQuery({
     queryKey: ["billing", tenantId],
     queryFn: () => getTenantBilling(tenantId),
@@ -61,6 +65,10 @@ function Billing({ tenantId }: { tenantId: string }) {
   const statusQuery = useQuery({
     queryKey: ["tenant-status", tenantId],
     queryFn: () => getTenantSubscriptionStatus(tenantId),
+  });
+  const subscriptionQuery = useQuery({
+    queryKey: ["subscription", tenantId],
+    queryFn: () => getSubscriptionInfo(tenantId),
   });
   const plansQuery = useQuery({
     queryKey: ["billing-plans"],
@@ -72,21 +80,30 @@ function Billing({ tenantId }: { tenantId: string }) {
     portal,
     busy,
     error: actionError,
+    notice: actionNotice,
     resetError,
+    resetNotice,
     checkoutVariables,
   } = useBillingActions(tenantId);
+
+  const invalidateBilling = () => {
+    qc.invalidateQueries({ queryKey: ["billing", tenantId] });
+    qc.invalidateQueries({ queryKey: ["tenant-status", tenantId] });
+    qc.invalidateQueries({ queryKey: ["subscription", tenantId] });
+  };
 
   const cancel = useMutation({
     mutationFn: () => cancelSubscription(tenantId, false),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["billing", tenantId] });
-      qc.invalidateQueries({ queryKey: ["tenant-status", tenantId] });
+      invalidateBilling();
+      setConfirmCancelOpen(false);
       setBanner({
         kind: "ok",
         text: "Tu suscripción queda activa hasta el final del período actual.",
       });
     },
     onError: (err) => {
+      setConfirmCancelOpen(false);
       setBanner({
         kind: "error",
         text:
@@ -97,12 +114,41 @@ function Billing({ tenantId }: { tenantId: string }) {
     },
   });
 
+  const resume = useMutation({
+    mutationFn: () => resumeSubscription(tenantId),
+    onSuccess: () => {
+      invalidateBilling();
+      setBanner({
+        kind: "ok",
+        text: "¡Listo! Tu suscripción sigue activa — la cancelación quedó sin efecto.",
+      });
+    },
+    onError: (err) => {
+      setBanner({
+        kind: "error",
+        text:
+          err instanceof ApiError
+            ? err.payload.error
+            : "No pudimos reanudar la suscripción.",
+      });
+    },
+  });
+
   const status = statusQuery.data;
   const billing = billingQuery.data?.billing;
+  const subscription = subscriptionQuery.data?.subscription;
   const plans = plansQuery.data?.plans ?? [];
 
+  const periodEndLabel = subscription?.current_period_end
+    ? new Date(subscription.current_period_end).toLocaleDateString("es-AR", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    : null;
+
   const combinedError = actionError ?? (banner?.kind === "error" ? banner.text : null);
-  const okBanner = banner?.kind === "ok" ? banner.text : null;
+  const okBanner = actionNotice ?? (banner?.kind === "ok" ? banner.text : null);
 
   return (
     <PageShell
@@ -157,12 +203,63 @@ function Billing({ tenantId }: { tenantId: string }) {
         ) : null}
       </div>
 
+      {/* Aviso de cancelación programada + reanudar */}
+      {subscription?.cancel_at_period_end && (
+        <div
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+            padding: "10px 14px",
+            borderRadius: 8,
+            marginBottom: 14,
+            background: "oklch(0.80 0.14 75 / 0.10)",
+            border: "1px solid oklch(0.80 0.14 75 / 0.35)",
+            color: "var(--z-amber)",
+          }}
+        >
+          <span style={{ flex: 1, fontSize: 12.5, minWidth: 220 }}>
+            Tu suscripción se cancela{" "}
+            {periodEndLabel ? `el ${periodEndLabel}` : "al final del período actual"}. Hasta
+            entonces seguís con todas las funciones.
+          </span>
+          <button
+            type="button"
+            onClick={() => resume.mutate()}
+            disabled={resume.isPending}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 14px",
+              borderRadius: 6,
+              border: "1px solid oklch(0.80 0.14 75 / 0.45)",
+              background: "oklch(0.80 0.14 75 / 0.15)",
+              color: "var(--z-amber)",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: resume.isPending ? "wait" : "pointer",
+            }}
+          >
+            {resume.isPending ? (
+              <Loader2 size={12} style={{ animation: "spin 900ms linear infinite" }} />
+            ) : null}
+            {resume.isPending ? "Reanudando…" : "Mantener mi suscripción"}
+          </button>
+        </div>
+      )}
+
       {/* Feedback banners */}
       {okBanner && (
         <Toast
           kind="ok"
           text={okBanner}
-          onClose={() => setBanner(null)}
+          onClose={() => {
+            resetNotice();
+            setBanner(null);
+          }}
         />
       )}
       {combinedError && (
@@ -195,19 +292,31 @@ function Billing({ tenantId }: { tenantId: string }) {
           }
           hint={status ? `${Math.round(status.usage_percent)}% usado` : undefined}
         />
-        <Kpi
-          label="Trial"
-          value={
-            status?.trial_days_remaining !== undefined
-              ? `${status.trial_days_remaining} días`
-              : "—"
-          }
-          hint={
-            status?.trial_ends_at
-              ? `hasta ${new Date(status.trial_ends_at).toLocaleDateString()}`
-              : undefined
-          }
-        />
+        {subscription?.has_subscription ? (
+          <Kpi
+            label={subscription.cancel_at_period_end ? "Activo hasta" : "Próxima renovación"}
+            value={
+              subscription.current_period_end
+                ? new Date(subscription.current_period_end).toLocaleDateString("es-AR")
+                : "—"
+            }
+            hint={subscription.cancel_at_period_end ? "cancelación programada" : undefined}
+          />
+        ) : (
+          <Kpi
+            label="Trial"
+            value={
+              status?.trial_days_remaining !== undefined
+                ? `${status.trial_days_remaining} días`
+                : "—"
+            }
+            hint={
+              status?.trial_ends_at
+                ? `hasta ${new Date(status.trial_ends_at).toLocaleDateString("es-AR")}`
+                : undefined
+            }
+          />
+        )}
       </div>
 
       <div
@@ -253,29 +362,145 @@ function Billing({ tenantId }: { tenantId: string }) {
         </div>
       )}
 
-      {billing?.stripe_subscription_id && status?.can_serve && (
-        <div style={{ marginTop: 18, fontSize: 12, color: "var(--text-3)" }}>
+      {billing?.stripe_subscription_id &&
+        status?.can_serve &&
+        !subscription?.cancel_at_period_end && (
+          <div style={{ marginTop: 18, fontSize: 12, color: "var(--text-3)" }}>
+            <button
+              type="button"
+              onClick={() => setConfirmCancelOpen(true)}
+              disabled={cancel.isPending}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 5,
+                border: "1px solid var(--hair-strong)",
+                background: "transparent",
+                color: "var(--text-2)",
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              Cancelar suscripción al final del período
+            </button>
+          </div>
+        )}
+
+      {confirmCancelOpen && (
+        <ConfirmCancelDialog
+          periodEndLabel={periodEndLabel}
+          pending={cancel.isPending}
+          onConfirm={() => cancel.mutate()}
+          onClose={() => setConfirmCancelOpen(false)}
+        />
+      )}
+    </PageShell>
+  );
+}
+
+function ConfirmCancelDialog({
+  periodEndLabel,
+  pending,
+  onConfirm,
+  onClose,
+}: {
+  periodEndLabel: string | null;
+  pending: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Confirmar cancelación de suscripción"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 80,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(0,0,0,0.55)",
+        backdropFilter: "blur(3px)",
+        padding: 16,
+      }}
+    >
+      <div
+        className="glass"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: 440,
+          borderRadius: 12,
+          border: "1px solid var(--hair-strong)",
+          padding: "22px 22px 18px",
+          background: "rgba(10,10,18,0.92)",
+        }}
+      >
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
+          ¿Cancelar tu suscripción?
+        </div>
+        <p style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55, margin: "0 0 6px" }}>
+          Tu plan sigue activo{" "}
+          {periodEndLabel ? (
+            <>
+              hasta el <strong style={{ color: "var(--text-0)" }}>{periodEndLabel}</strong>
+            </>
+          ) : (
+            "hasta el final del período ya pagado"
+          )}
+          . Después de esa fecha tu agente deja de responder a tus clientes y el panel queda en
+          modo lectura de tu plan.
+        </p>
+        <p style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55, margin: "0 0 16px" }}>
+          Podés arrepentirte cuando quieras antes de esa fecha con un clic.
+        </p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button
             type="button"
-            onClick={() => cancel.mutate()}
-            disabled={cancel.isPending}
+            onClick={onClose}
+            disabled={pending}
             style={{
-              padding: "6px 12px",
-              borderRadius: 5,
+              padding: "8px 14px",
+              borderRadius: 7,
               border: "1px solid var(--hair-strong)",
-              background: "transparent",
-              color: "var(--text-2)",
-              fontSize: 11,
+              background: "rgba(255,255,255,0.04)",
+              color: "var(--text-1)",
+              fontSize: 12.5,
+              fontWeight: 600,
               cursor: "pointer",
             }}
           >
-            {cancel.isPending
-              ? "Cancelando…"
-              : "Cancelar suscripción al final del período"}
+            Mantener mi plan
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={pending}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "8px 14px",
+              borderRadius: 7,
+              border: "1px solid oklch(0.58 0.21 25)",
+              background: "oklch(0.52 0.20 25)",
+              color: "#fff",
+              fontSize: 12.5,
+              fontWeight: 600,
+              cursor: pending ? "wait" : "pointer",
+              opacity: pending ? 0.7 : 1,
+            }}
+          >
+            {pending ? (
+              <Loader2 size={12} style={{ animation: "spin 900ms linear infinite" }} />
+            ) : null}
+            {pending ? "Cancelando…" : "Sí, cancelar"}
           </button>
         </div>
-      )}
-    </PageShell>
+      </div>
+    </div>
   );
 }
 
