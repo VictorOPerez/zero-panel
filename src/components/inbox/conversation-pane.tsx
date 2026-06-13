@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
 import {
   MoreHorizontal,
   Phone,
@@ -44,17 +49,47 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
   const messagesKey = ["messages", tenantId, c.id];
   const humanMode = c.status === "humano_atendiendo";
 
-  const messagesQuery = useQuery({
+  // Paginación real: la primera página son los últimos 100; "Cargar
+  // anteriores" pide con el cursor `before` (keyset que el backend ya
+  // soporta). pages[0] = batch más reciente.
+  const PAGE_SIZE = 100;
+  const messagesQuery = useInfiniteQuery({
     queryKey: messagesKey,
-    queryFn: () => listMessages(tenantId, c.id, { limit: 200 }),
+    queryFn: ({ pageParam }) =>
+      listMessages(tenantId, c.id, { limit: PAGE_SIZE, before: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.length >= PAGE_SIZE ? lastPage[0]?.id : undefined,
     staleTime: 5_000,
   });
 
-  const messages = messagesQuery.data ?? [];
+  const messages = useMemo(() => {
+    const pages = messagesQuery.data?.pages ?? [];
+    const merged = [...pages].reverse().flat();
+    const seen = new Set<string>();
+    return merged.filter((m) => (seen.has(m.id) ? false : (seen.add(m.id), true)));
+  }, [messagesQuery.data]);
 
+  // Auto-scroll SOLO cuando llega un mensaje nuevo y ya estabas cerca del
+  // fondo (o al abrir la conversación). Cargar mensajes viejos o leer
+  // historial arriba no te arranca al fondo.
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
+  const mountedRef = useRef(false);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [c.id, messages.length]);
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+      return;
+    }
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+    if (nearBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastMessageId]);
 
   useEffect(() => {
     if (!c.id) return;
@@ -66,9 +101,13 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
   const sendMut = useMutation({
     mutationFn: (body: { text: string }) => sendMessage(tenantId, c.id, body),
     onSuccess: (m) => {
-      qc.setQueryData<Message[] | undefined>(messagesKey, (prev) =>
-        prev && prev.some((x) => x.id === m.id) ? prev : [...(prev ?? []), m]
-      );
+      qc.setQueryData<InfiniteData<Message[]> | undefined>(messagesKey, (prev) => {
+        if (!prev || prev.pages.length === 0) return prev;
+        if (prev.pages.some((page) => page.some((x) => x.id === m.id))) return prev;
+        const pages = prev.pages.slice();
+        pages[0] = [...pages[0], m];
+        return { ...prev, pages };
+      });
       setText("");
       setError(null);
     },
@@ -315,10 +354,32 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
 
         {/* Messages */}
         <div
-          aria-live="polite"
+          ref={messagesContainerRef}
           aria-label="Mensajes de la conversación"
           style={{ flex: 1, overflowY: "auto", padding: "20px 18px 12px" }}
         >
+          {messagesQuery.hasNextPage && (
+            <div style={{ textAlign: "center", marginBottom: 12 }}>
+              <button
+                type="button"
+                onClick={() => messagesQuery.fetchNextPage()}
+                disabled={messagesQuery.isFetchingNextPage}
+                style={{
+                  padding: "5px 14px",
+                  borderRadius: 6,
+                  border: "1px solid var(--hair-strong)",
+                  background: "rgba(255,255,255,0.04)",
+                  color: "var(--text-2)",
+                  fontSize: 11,
+                  cursor: "pointer",
+                }}
+              >
+                {messagesQuery.isFetchingNextPage
+                  ? "Cargando…"
+                  : "Cargar mensajes anteriores"}
+              </button>
+            </div>
+          )}
           {messagesQuery.isLoading && (
             <div
               style={{

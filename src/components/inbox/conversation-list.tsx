@@ -18,6 +18,9 @@ interface Props {
   onSelect: (id: string) => void;
   channel: Channel;
   onChannelChange: (ch: Channel) => void;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 function relativeTime(iso: string): string {
@@ -29,7 +32,16 @@ function relativeTime(iso: string): string {
   return `${Math.floor(h / 24)}d`;
 }
 
-export function ConversationList({ conversations, selectedId, onSelect, channel, onChannelChange }: Props) {
+export function ConversationList({
+  conversations,
+  selectedId,
+  onSelect,
+  channel,
+  onChannelChange,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+}: Props) {
   const [search, setSearch] = useState("");
 
   const filtered = conversations.filter((c) => {
@@ -72,7 +84,7 @@ export function ConversationList({ conversations, selectedId, onSelect, channel,
                 marginTop: 2,
               }}
             >
-              {unreadTotal} sin leer · {conversations.length} hoy
+              {unreadTotal} sin leer · {conversations.length} conversaciones
             </div>
           </div>
           <div style={{ display: "flex", gap: 4 }}>
@@ -226,14 +238,37 @@ export function ConversationList({ conversations, selectedId, onSelect, channel,
             <span>Todo en cero</span>
           </div>
         ) : (
-          filtered.map((c) => (
-            <ConversationRow
-              key={c.id}
-              conversation={c}
-              selected={c.id === selectedId}
-              onSelect={() => onSelect(c.id)}
-            />
-          ))
+          <>
+            {filtered.map((c) => (
+              <ConversationRow
+                key={c.id}
+                conversation={c}
+                selected={c.id === selectedId}
+                onSelect={() => onSelect(c.id)}
+              />
+            ))}
+            {hasMore && onLoadMore && (
+              <div style={{ padding: "10px 14px", textAlign: "center" }}>
+                <button
+                  type="button"
+                  onClick={onLoadMore}
+                  disabled={loadingMore}
+                  style={{
+                    width: "100%",
+                    padding: "7px 12px",
+                    borderRadius: 6,
+                    border: "1px solid var(--hair-strong)",
+                    background: "rgba(255,255,255,0.04)",
+                    color: "var(--text-2)",
+                    fontSize: 11,
+                    cursor: "pointer",
+                  }}
+                >
+                  {loadingMore ? "Cargando…" : "Cargar más conversaciones"}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </section>
