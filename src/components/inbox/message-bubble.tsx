@@ -57,6 +57,9 @@ export function MessageBubble({ message: m }: { message: Message }) {
   const isOutbound = isZero || m.from === "human";
   const hasImage = m.mediaType === "image" && !!m.mediaUrl;
   const hasAudio = m.mediaType === "audio" && !!m.mediaUrl;
+  const hasVideo = m.mediaType === "video" && !!m.mediaUrl;
+  const hasDocument = m.mediaType === "document" && !!m.mediaUrl;
+  const hasMedia = hasImage || hasAudio || hasVideo || hasDocument;
   // Texto a mostrar: en imágenes, sin el corchete de descripción; en el resto,
   // tal cual (el audio conserva su transcripción, que es útil).
   const displayText = hasImage ? cleanImageCaption(m.text) : m.text;
@@ -153,33 +156,69 @@ export function MessageBubble({ message: m }: { message: Message }) {
               style={{ width: 220, marginBottom: displayText ? 6 : 0, display: "block" }}
             />
           )}
-          {displayText && renderText(displayText)}
-        </div>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: isUser ? "flex-end" : "flex-start",
-            gap: 6,
-            marginTop: 3,
-            fontSize: 10,
-            color: "var(--text-3)",
-            fontFamily: "var(--font-jetbrains-mono)",
-          }}
-        >
-          <span suppressHydrationWarning>
-            {new Date(m.sentAt).toLocaleTimeString("es-AR", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </span>
-          {m.toolCall && (
-            <span>
-              · {m.toolCall.name} · {m.toolCall.durationMs}ms
+          {hasVideo && (
+            <video
+              controls
+              preload="metadata"
+              src={m.mediaUrl}
+              style={{
+                maxWidth: "100%",
+                maxHeight: 280,
+                borderRadius: 8,
+                display: "block",
+                marginBottom: displayText ? 6 : 0,
+              }}
+            />
+          )}
+          {hasDocument && (
+            <a
+              href={m.mediaUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                color: "var(--text-0)",
+                textDecoration: "underline",
+                marginBottom: displayText ? 6 : 0,
+              }}
+            >
+              📄 {displayText || "Documento"}
+            </a>
+          )}
+          {/* El documento ya muestra su nombre en el link; no repetimos el texto. */}
+          {displayText && !hasDocument && renderText(displayText)}
+          {/* Hora + palomitas al final de la burbuja, abajo a la derecha (estilo
+              WhatsApp). marginTop negativo en el lado del texto para pegarlas. */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              alignItems: "center",
+              gap: 5,
+              marginTop: hasMedia && !displayText ? 4 : 2,
+              fontSize: 10,
+              color: "var(--text-3)",
+              fontFamily: "var(--font-jetbrains-mono)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {m.toolCall && (
+              <span style={{ marginRight: "auto" }}>
+                {m.toolCall.name} · {m.toolCall.durationMs}ms
+              </span>
+            )}
+            <span suppressHydrationWarning>
+              {new Date(m.sentAt).toLocaleTimeString("es-AR", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </span>
-          )}
-          {isOutbound && m.deliveryStatus && (
-            <DeliveryTicks status={m.deliveryStatus} />
-          )}
+            {isOutbound && m.deliveryStatus && (
+              <DeliveryTicks status={m.deliveryStatus} />
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   useInfiniteQuery,
   useMutation,
@@ -8,12 +8,8 @@ import {
   type InfiniteData,
 } from "@tanstack/react-query";
 import {
-  MoreHorizontal,
-  Phone,
   Paperclip,
   Send,
-  FileText,
-  Zap,
   User,
   Check,
   ChevronLeft,
@@ -24,10 +20,13 @@ import { ChannelIcon } from "@/components/channel-icon";
 import { IconDot, IconSparkle } from "@/components/icons";
 import { MessageBubble } from "./message-bubble";
 import {
+  fileToBase64,
   listMessages,
   markConversationRead,
+  mediaKindFromMime,
   resolveConversation,
   returnToAI,
+  sendMediaMessage,
   sendMessage,
   takeControl,
 } from "@/lib/api/conversations";
@@ -85,15 +84,22 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
     messages.length > 0 &&
     (!lastInboundAt || Date.now() - new Date(lastInboundAt).getTime() >= WINDOW_MS);
 
-  // Auto-scroll SOLO cuando llega un mensaje nuevo y ya estabas cerca del
-  // fondo (o al abrir la conversación). Cargar mensajes viejos o leer
-  // historial arriba no te arranca al fondo.
+  // Auto-scroll. Al ABRIR la conversación baja del todo (de una, sin animar);
+  // después, en cada mensaje nuevo solo baja si ya estabas cerca del fondo —
+  // cargar historial viejo o leer arriba no te arranca al fondo.
+  // BUG viejo: el salto inicial corría ANTES de que cargaran los mensajes, así
+  // que conversaciones con historial no bajaban. Ahora el salto se dispara
+  // cuando los mensajes ya están en pantalla (y se rearma al cambiar de chat).
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
-  const mountedRef = useRef(false);
+  const didInitialScrollRef = useRef(false);
   useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
+    didInitialScrollRef.current = false;
+  }, [c.id]);
+  useEffect(() => {
+    if (messages.length === 0) return;
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true;
       messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
       return;
     }
@@ -130,6 +136,56 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
       setError(err instanceof Error ? err.message : "No pudimos enviar el mensaje.");
     },
   });
+
+  // Enviar adjunto (foto/video/audio/pdf) cuando el humano tomó el control.
+  // El backend lo sube a Cloudinary y lo manda por WhatsApp; vuelve como un
+  // mensaje 'human' con media que cae en el cache igual que el texto.
+  const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const appendToCache = (m: Message) => {
+    qc.setQueryData<InfiniteData<Message[]> | undefined>(messagesKey, (prev) => {
+      if (!prev || prev.pages.length === 0) return prev;
+      if (prev.pages.some((page) => page.some((x) => x.id === m.id))) return prev;
+      const pages = prev.pages.slice();
+      pages[0] = [...pages[0], m];
+      return { ...prev, pages };
+    });
+  };
+  const sendMediaMut = useMutation({
+    mutationFn: async (file: File) => {
+      const content_base64 = await fileToBase64(file);
+      return sendMediaMessage(tenantId, c.id, {
+        content_base64,
+        mime: file.type || "application/octet-stream",
+        kind: mediaKindFromMime(file.type || ""),
+        filename: file.name,
+      });
+    },
+    onSuccess: (m) => {
+      appendToCache(m);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(
+        err instanceof Error ? err.message : "No pudimos enviar el archivo."
+      );
+    },
+  });
+
+  function onPickFile() {
+    if (!humanMode || outside24h || sendMediaMut.isPending) return;
+    fileInputRef.current?.click();
+  }
+  function onFileSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite re-elegir el mismo archivo
+    if (!file) return;
+    if (file.size > MAX_MEDIA_BYTES) {
+      setError("El archivo supera el límite de 16 MB.");
+      return;
+    }
+    sendMediaMut.mutate(file);
+  }
 
   // Los errores de estas mutaciones se mostraban a NADIE (sin onError): si
   // "Tomar control" fallaba (permiso, red, sesión), el botón no hacía nada y
@@ -352,18 +408,6 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
                 <span className="hidden sm:inline">Resolver</span>
               </button>
             )}
-            <button
-              aria-label="Llamar"
-              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, borderRadius: 5, border: "1px solid transparent", background: "transparent", color: "var(--text-2)", cursor: "pointer" }}
-            >
-              <Phone size={14} />
-            </button>
-            <button
-              aria-label="Más opciones"
-              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, borderRadius: 5, border: "1px solid transparent", background: "transparent", color: "var(--text-2)", cursor: "pointer" }}
-            >
-              <MoreHorizontal size={14} />
-            </button>
           </div>
         </header>
 
@@ -520,21 +564,43 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
             />
 
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*,audio/*,application/pdf"
+                onChange={onFileSelected}
+                style={{ display: "none" }}
+              />
               <button
                 aria-label="Adjuntar archivo"
-                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, borderRadius: 5, border: "none", background: "transparent", color: "var(--text-2)", cursor: "pointer" }}
+                title={
+                  !humanMode
+                    ? "Tomá el control para adjuntar"
+                    : outside24h
+                      ? "Fuera de la ventana de 24 h"
+                      : "Adjuntar foto, video, audio o PDF"
+                }
+                onClick={onPickFile}
+                disabled={!humanMode || outside24h || sendMediaMut.isPending}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 26,
+                  height: 26,
+                  borderRadius: 5,
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--text-2)",
+                  cursor: !humanMode || outside24h ? "not-allowed" : "pointer",
+                  opacity: !humanMode || outside24h ? 0.5 : 1,
+                }}
               >
-                <Paperclip size={14} />
-              </button>
-              <button
-                style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 8px", borderRadius: 5, border: "none", background: "transparent", color: "var(--text-2)", fontSize: 11, cursor: "pointer" }}
-              >
-                <FileText size={13} /> Plantillas
-              </button>
-              <button
-                style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 8px", borderRadius: 5, border: "none", background: "transparent", color: "var(--text-2)", fontSize: 11, cursor: "pointer" }}
-              >
-                <Zap size={13} /> Macros
+                {sendMediaMut.isPending ? (
+                  <Loader2 size={14} style={{ animation: "spin 900ms linear infinite" }} />
+                ) : (
+                  <Paperclip size={14} />
+                )}
               </button>
               <span style={{ marginLeft: "auto" }} />
               <kbd

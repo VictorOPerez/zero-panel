@@ -12,7 +12,9 @@ import type {
 // Coerción defensiva: el backend manda strings; solo aceptamos los valores
 // conocidos (los demás → undefined, la burbuja degrada a solo texto / sin ✓✓).
 export function coerceMediaType(v: unknown): MediaType | undefined {
-  return v === "image" || v === "audio" ? v : undefined;
+  return v === "image" || v === "audio" || v === "video" || v === "document"
+    ? v
+    : undefined;
 }
 export function coerceDeliveryStatus(v: unknown): DeliveryStatus | undefined {
   return v === "sent" || v === "delivered" || v === "read" || v === "failed"
@@ -149,6 +151,50 @@ export async function sendMessage(
 ): Promise<Message> {
   const res = await api.post<{ message: BackendMessage }>(
     `/api/admin/tenants/${encode(tenantId)}/conversations/${encode(conversationId)}/messages`,
+    body
+  );
+  return mapMessage(res.message);
+}
+
+export type OutboundMediaKind = "image" | "video" | "audio" | "document";
+
+// Mapea el MIME del archivo elegido al `kind` que entiende WhatsApp Cloud.
+export function mediaKindFromMime(mime: string): OutboundMediaKind {
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  return "document";
+}
+
+// Lee un File del navegador y devuelve su contenido en base64 (sin el prefijo
+// data:). Lo usa el composer para mandar adjuntos por JSON (mismo patrón que
+// la ingesta de PDFs).
+export function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("No pudimos leer el archivo."));
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function sendMediaMessage(
+  tenantId: string,
+  conversationId: string,
+  body: {
+    content_base64: string;
+    mime: string;
+    kind: OutboundMediaKind;
+    filename?: string;
+    caption?: string;
+  }
+): Promise<Message> {
+  const res = await api.post<{ message: BackendMessage }>(
+    `/api/admin/tenants/${encode(tenantId)}/conversations/${encode(conversationId)}/media`,
     body
   );
   return mapMessage(res.message);

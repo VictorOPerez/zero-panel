@@ -41,7 +41,7 @@ export type Conversation = z.infer<typeof ConversationSchema>;
 export const DeliveryStatusSchema = z.enum(["sent", "delivered", "read", "failed"]);
 export type DeliveryStatus = z.infer<typeof DeliveryStatusSchema>;
 
-export const MediaTypeSchema = z.enum(["image", "audio"]);
+export const MediaTypeSchema = z.enum(["image", "audio", "video", "document"]);
 export type MediaType = z.infer<typeof MediaTypeSchema>;
 
 export const MessageSchema = z.object({
