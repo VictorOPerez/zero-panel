@@ -48,6 +48,7 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
 
   const messagesKey = ["messages", tenantId, c.id];
   const humanMode = c.status === "humano_atendiendo";
+  const WINDOW_MS = 24 * 60 * 60 * 1000;
 
   // Paginación real: la primera página son los últimos 100; "Cargar
   // anteriores" pide con el cursor `before` (keyset que el backend ya
@@ -69,6 +70,20 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
     const seen = new Set<string>();
     return merged.filter((m) => (seen.has(m.id) ? false : (seen.add(m.id), true)));
   }, [messagesQuery.data]);
+
+  // Ventana de 24h de Meta (solo WhatsApp): se computa del último mensaje
+  // entrante del cliente que ya está cargado — cero costo extra. Fuera de la
+  // ventana, Meta rechaza el texto libre, así que avisamos y bloqueamos.
+  const lastInboundAt = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].from === "user") return messages[i].sentAt;
+    }
+    return null;
+  }, [messages]);
+  const outside24h =
+    c.channel === "wa" &&
+    messages.length > 0 &&
+    (!lastInboundAt || Date.now() - new Date(lastInboundAt).getTime() >= WINDOW_MS);
 
   // Auto-scroll SOLO cuando llega un mensaje nuevo y ya estabas cerca del
   // fondo (o al abrir la conversación). Cargar mensajes viejos o leer
@@ -166,7 +181,7 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
 
   function handleSend() {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed || outside24h || sendMut.isPending) return;
     sendMut.mutate({ text: trimmed });
   }
 
@@ -435,6 +450,25 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
               {error}
             </div>
           )}
+          {humanMode && outside24h && (
+            <div
+              role="note"
+              style={{
+                marginBottom: 6,
+                padding: "8px 10px",
+                borderRadius: 5,
+                border: "1px solid oklch(0.80 0.14 75 / 0.4)",
+                background: "oklch(0.80 0.14 75 / 0.08)",
+                color: "var(--z-amber)",
+                fontSize: 11,
+                lineHeight: 1.5,
+              }}
+            >
+              El cliente escribió hace más de 24&nbsp;h. Por reglas de WhatsApp, no se
+              puede enviar texto libre hasta que vuelva a escribir (solo plantillas
+              aprobadas).
+            </div>
+          )}
           <div
             className="glass"
             style={{ borderRadius: 8, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 8 }}
@@ -456,11 +490,13 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              disabled={!humanMode || sendMut.isPending}
+              disabled={!humanMode || outside24h || sendMut.isPending}
               placeholder={
-                humanMode
-                  ? "Escribí tu mensaje…"
-                  : 'Pulsá "Tomar control" para escribir como humano.'
+                !humanMode
+                  ? 'Pulsá "Tomar control" para escribir como humano.'
+                  : outside24h
+                    ? "Fuera de la ventana de 24 h de WhatsApp."
+                    : "Escribí tu mensaje…"
               }
               rows={2}
               aria-label="Escribir mensaje"
@@ -473,7 +509,7 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
                 fontSize: 12.5,
                 lineHeight: 1.45,
                 padding: "2px 0",
-                opacity: humanMode ? 1 : 0.6,
+                opacity: humanMode && !outside24h ? 1 : 0.6,
               }}
               onKeyDown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -513,7 +549,7 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
               </kbd>
               <button
                 aria-label="Enviar mensaje"
-                disabled={!humanMode || sendMut.isPending || !text.trim()}
+                disabled={!humanMode || outside24h || sendMut.isPending || !text.trim()}
                 onClick={handleSend}
                 style={{
                   display: "inline-flex",
@@ -527,7 +563,7 @@ export function ConversationPane({ tenantId, conversation: c, onBack }: Props) {
                   fontSize: 11,
                   fontWeight: 600,
                   cursor: "pointer",
-                  opacity: !humanMode || sendMut.isPending ? 0.5 : 1,
+                  opacity: !humanMode || outside24h || sendMut.isPending ? 0.5 : 1,
                 }}
               >
                 {sendMut.isPending ? (
