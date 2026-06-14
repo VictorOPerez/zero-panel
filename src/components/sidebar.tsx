@@ -20,6 +20,7 @@ import {
   Phone,
   Lock,
   Image as ImageIcon,
+  LayoutGrid,
 } from "lucide-react";
 import { IconDot } from "@/components/icons";
 import { SidebarUsage } from "@/components/sidebar-usage";
@@ -243,6 +244,34 @@ export function Sidebar() {
         {ESSENTIAL_NAV_ITEMS.map((n) => (
           <NavLinkItem key={n.key} item={n} active={isActive(n.href)} />
         ))}
+
+        {/* Centro de Control — solo el dueño de plataforma (super_admin). El
+            cliente nunca ve esta sección porque su rol no la habilita. */}
+        {user?.role === "super_admin" && (
+          <>
+            <div
+              style={{
+                padding: "14px 4px 6px",
+                fontSize: 10,
+                textTransform: "uppercase",
+                letterSpacing: "0.12em",
+                color: "var(--text-3)",
+                fontWeight: 600,
+              }}
+            >
+              Plataforma
+            </div>
+            <NavLinkItem
+              item={{
+                key: "platform",
+                label: "Centro de Control",
+                href: "/platform",
+                icon: LayoutGrid,
+              }}
+              active={isActive("/platform")}
+            />
+          </>
+        )}
       </nav>
 
       <div style={{ flex: 1, minHeight: 8 }} />
@@ -403,7 +432,13 @@ export function Sidebar() {
   );
 }
 
-type NavItem = (typeof ESSENTIAL_NAV_ITEMS)[number] | (typeof TOOL_MENU_SECTIONS)[number]["items"][number];
+type NavItem = {
+  key: string;
+  label: string;
+  href: string;
+  icon: typeof Inbox;
+  feature?: GatedFeature;
+};
 
 function NavLinkItem({
   item,
