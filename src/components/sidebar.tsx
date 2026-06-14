@@ -19,6 +19,7 @@ import {
   ShieldUser,
   Phone,
   Lock,
+  Image as ImageIcon,
 } from "lucide-react";
 import { IconDot } from "@/components/icons";
 import { SidebarUsage } from "@/components/sidebar-usage";
@@ -42,6 +43,7 @@ const TOOL_MENU_SECTIONS = [
     items: [
       { key: "knowledge", label: "Conocimiento", href: "/knowledge", icon: BookOpen },
       { key: "services", label: "Servicios", href: "/services", icon: Briefcase },
+      { key: "gallery", label: "Galería", href: "/gallery", icon: ImageIcon },
       { key: "crm", label: "Contactos", href: "/crm", icon: Users, feature: "crm" as GatedFeature },
       { key: "followups", label: "Followups", href: "/followups", icon: CalendarClock, feature: "followups" as GatedFeature },
       { key: "products", label: "Productos", href: "/products", icon: Package, feature: "products" as GatedFeature },
