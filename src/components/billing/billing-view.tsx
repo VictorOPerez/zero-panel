@@ -21,7 +21,7 @@ import {
 } from "@/components/billing/billing-status";
 import { useBillingActions } from "@/lib/hooks/use-billing-actions";
 import { resolvePlanDisplay } from "@/lib/billing/default-plan";
-import type { BillingPlan } from "@/lib/api/contract";
+import type { BillingPlan, TenantStatusReport } from "@/lib/api/contract";
 
 export function BillingView() {
   return <RequireTenant>{(tenantId) => <Billing tenantId={tenantId} />}</RequireTenant>;
@@ -284,13 +284,15 @@ function Billing({ tenantId }: { tenantId: string }) {
           }
         />
         <Kpi
-          label="Uso mensual"
-          value={
-            status
-              ? `${status.tokens_used_this_period.toLocaleString()} / ${status.monthly_token_limit.toLocaleString()}`
-              : "—"
+          label="Uso del plan"
+          value={status ? planUsageValue(status) : "—"}
+          hint={
+            status && !isUnlimited(status)
+              ? `${Math.round(status.usage_percent)}% usado`
+              : status
+                ? "este mes"
+                : undefined
           }
-          hint={status ? `${Math.round(status.usage_percent)}% usado` : undefined}
         />
         {subscription?.has_subscription ? (
           <Kpi
@@ -318,6 +320,8 @@ function Billing({ tenantId }: { tenantId: string }) {
           />
         )}
       </div>
+
+      {status && <PlanUsageCard status={status} />}
 
       <div
         style={{
@@ -558,6 +562,131 @@ function Toast({
       >
         <X size={12} />
       </button>
+    </div>
+  );
+}
+
+// Uso siempre en conversaciones (lenguaje del cliente), nunca tokens.
+const UNLIMITED_CONV_THRESHOLD = 50_000; // por encima = "Ilimitado" (grants dueño)
+
+function isUnlimited(s: TenantStatusReport): boolean {
+  const total = s.estimated_conversations_total ?? -1;
+  return total < 0 || total > UNLIMITED_CONV_THRESHOLD;
+}
+
+function planUsageValue(s: TenantStatusReport): string {
+  if (isUnlimited(s)) return "Ilimitado";
+  const used = s.estimated_conversations_used ?? 0;
+  const total = s.estimated_conversations_total ?? 0;
+  return `${used.toLocaleString("es-AR")} / ${total.toLocaleString("es-AR")}`;
+}
+
+function usageTone(percent: number): { color: string; track: string } {
+  if (percent >= 100) return { color: "var(--z-red)", track: "oklch(0.68 0.21 25 / 0.18)" };
+  if (percent >= 80) return { color: "var(--z-amber)", track: "oklch(0.80 0.14 75 / 0.16)" };
+  return { color: "var(--z-green)", track: "rgba(255,255,255,0.06)" };
+}
+
+/**
+ * Barra grande del consumo del período en /billing. Habla en conversaciones,
+ * colores a 80% (ámbar) / 100% (rojo), con mensaje de upsell cuando se acerca
+ * o llega al límite. Para tenants ilimitados muestra el estado sin barra.
+ */
+function PlanUsageCard({ status }: { status: TenantStatusReport }) {
+  const unlimited = isUnlimited(status);
+  const percent = Math.min(100, Math.max(0, Math.round(status.usage_percent)));
+  const tone = usageTone(status.usage_percent);
+  const used = status.estimated_conversations_used ?? 0;
+  const total = status.estimated_conversations_total ?? 0;
+  const remaining = status.estimated_conversations_remaining ?? -1;
+
+  return (
+    <div className="glass" style={{ ...cardStyle, marginBottom: 14 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          marginBottom: 10,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 10,
+            color: "var(--text-3)",
+            textTransform: "uppercase",
+            letterSpacing: "0.12em",
+            fontWeight: 600,
+          }}
+        >
+          Uso de este período
+        </div>
+        {!unlimited && (
+          <div
+            style={{
+              fontFamily: "var(--font-jetbrains-mono)",
+              fontSize: 13,
+              fontWeight: 700,
+              color: tone.color,
+            }}
+          >
+            {percent}%
+          </div>
+        )}
+      </div>
+
+      {unlimited ? (
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-1)" }}>
+          Conversaciones ilimitadas
+        </div>
+      ) : (
+        <>
+          <div
+            style={{
+              height: 8,
+              borderRadius: 999,
+              background: tone.track,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                width: `${percent}%`,
+                height: "100%",
+                borderRadius: 999,
+                background: tone.color,
+                transition: "width 0.4s ease",
+              }}
+            />
+          </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              marginTop: 8,
+              fontSize: 12,
+              color: "var(--text-2)",
+            }}
+          >
+            <span>
+              ≈ {used.toLocaleString("es-AR")} de {total.toLocaleString("es-AR")} conversaciones
+            </span>
+            {remaining >= 0 && (
+              <span style={{ color: tone.color, fontWeight: 600, whiteSpace: "nowrap" }}>
+                {remaining.toLocaleString("es-AR")} restantes
+              </span>
+            )}
+          </div>
+          {status.usage_percent >= 80 && (
+            <div style={{ fontSize: 11.5, color: tone.color, marginTop: 10, lineHeight: 1.45 }}>
+              {status.usage_percent >= 100
+                ? "Alcanzaste el límite de tu plan. Escalá para que tu asistente siga respondiendo conversaciones nuevas."
+                : "Estás cerca del límite. Considerá escalar de plan para no quedarte sin conversaciones este mes."}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
