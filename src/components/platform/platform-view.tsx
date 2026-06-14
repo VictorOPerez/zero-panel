@@ -17,12 +17,17 @@ import {
   LogIn,
   Check,
   Trash2,
+  UserPlus,
+  Link2,
+  Copy,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { PageShell } from "@/components/panel/page-shell";
 import {
   listPlatformTenants,
   adminProvisionNumber,
+  createPlatformTenant,
+  createMagicLink,
   type PlatformTenant,
 } from "@/lib/api/platform";
 import {
@@ -85,6 +90,8 @@ function PlatformControl() {
   const [appliedSearch, setAppliedSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [ownerForward, setOwnerForward] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const qc = useQueryClient();
 
   // Cargar el celular del dueño guardado.
   useEffect(() => {
@@ -109,7 +116,12 @@ function PlatformControl() {
   return (
     <PageShell
       title="Centro de Control"
-      subtitle="Todos los negocios de la plataforma. Provisioná números llave en mano (sin cobro), entrá a cualquier negocio y entregalo listo."
+      subtitle="Todos los negocios de la plataforma. Creá un negocio, provisioná números llave en mano (sin cobro), entrá a cualquiera y entregá un link de acceso."
+      actions={
+        <button type="button" onClick={() => setCreateOpen(true)} style={primaryBtn}>
+          <UserPlus size={13} /> Crear negocio
+        </button>
+      }
     >
       {/* Celular del dueño para verificación de Meta */}
       <div
@@ -196,6 +208,17 @@ function PlatformControl() {
           />
         ))}
       </div>
+
+      {createOpen && (
+        <CreateTenantModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => {
+            qc.invalidateQueries({ queryKey: ["platform-tenants"] });
+            setAppliedSearch("");
+            setSearch("");
+          }}
+        />
+      )}
     </PageShell>
   );
 }
@@ -213,6 +236,7 @@ function TenantCard({
 }) {
   const router = useRouter();
   const setActiveTenant = useAuthStore((s) => s.setActiveTenant);
+  const [linkOpen, setLinkOpen] = useState(false);
 
   // Impersonación: como super_admin pasa todos los gates del backend, "entrar"
   // = setear el tenant activo. El panel entero pasa a operar como ese negocio.
@@ -275,6 +299,9 @@ function TenantCard({
           <button type="button" onClick={enterTenant} style={ghostBtn} title="Entrar a este negocio (como si fueras el cliente)">
             <LogIn size={13} /> Entrar
           </button>
+          <button type="button" onClick={() => setLinkOpen(true)} style={ghostBtn} title="Generar un link de acceso para el cliente">
+            <Link2 size={13} /> Link
+          </button>
           <button type="button" onClick={onToggle} style={ghostBtn}>
             <Phone size={13} /> {expanded ? "Cerrar" : "Números"}
           </button>
@@ -283,6 +310,14 @@ function TenantCard({
 
       {expanded && (
         <TenantNumbersPanel tenantId={tenant.id} ownerForward={ownerForward} />
+      )}
+
+      {linkOpen && (
+        <MagicLinkModal
+          tenantId={tenant.id}
+          tenantName={tenant.name}
+          onClose={() => setLinkOpen(false)}
+        />
       )}
     </div>
   );
@@ -800,6 +835,245 @@ function ProvisionWizard({
         )}
       </div>
     </div>
+  );
+}
+
+// ──────────────────────────────── Modales ─────────────────────────────────
+
+function ModalShell({
+  title,
+  icon: Icon,
+  onClose,
+  busy,
+  children,
+}: {
+  title: string;
+  icon?: typeof Phone;
+  onClose: () => void;
+  busy?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !busy) onClose();
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.55)",
+        backdropFilter: "blur(6px)",
+        zIndex: 100,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+    >
+      <div
+        className="glass"
+        style={{
+          width: "min(520px, 100%)",
+          maxHeight: "90vh",
+          display: "flex",
+          flexDirection: "column",
+          borderRadius: 12,
+          border: "1px solid var(--hair-strong)",
+          background: "var(--surface-1, rgba(15,15,20,0.96))",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "14px 18px",
+            borderBottom: "1px solid var(--hair)",
+          }}
+        >
+          {Icon && <Icon size={15} style={{ color: "var(--z-cyan)" }} />}
+          <div style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{title}</div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            aria-label="Cerrar"
+            style={iconBtn}
+          >
+            <X size={14} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function CreateTenantModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const mut = useMutation({
+    mutationFn: () => createPlatformTenant(name.trim()),
+    onSuccess: () => {
+      onCreated();
+      onClose();
+    },
+    onError: (err) =>
+      setError(
+        err instanceof ApiError
+          ? err.payload.error
+          : "No pudimos crear el negocio."
+      ),
+  });
+
+  return (
+    <ModalShell title="Crear negocio" icon={UserPlus} onClose={onClose} busy={mut.isPending}>
+      <div style={{ padding: 18 }}>
+        <Field label="Nombre del negocio">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Estética Bella"
+            style={inputStyle}
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && name.trim().length >= 2) mut.mutate();
+            }}
+          />
+        </Field>
+        <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 8, lineHeight: 1.5 }}>
+          Se crea con un trial. El resto (servicios, brief, persona) lo
+          configurás vos entrando al negocio, o se lo dejás listo y le pasás un
+          link de acceso.
+        </div>
+        {error && (
+          <div style={{ ...errorStyle, marginTop: 12, marginBottom: 0 }}>{error}</div>
+        )}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          justifyContent: "flex-end",
+          padding: "12px 18px",
+          borderTop: "1px solid var(--hair)",
+          background: "rgba(0,0,0,0.15)",
+        }}
+      >
+        <button type="button" onClick={onClose} disabled={mut.isPending} style={ghostBtn}>
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={() => mut.mutate()}
+          disabled={name.trim().length < 2 || mut.isPending}
+          style={{ ...primaryBtn, opacity: name.trim().length < 2 ? 0.5 : 1 }}
+        >
+          {mut.isPending ? (
+            <Loader2 size={13} style={{ animation: "spin 900ms linear infinite" }} />
+          ) : (
+            <UserPlus size={13} />
+          )}
+          Crear
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function MagicLinkModal({
+  tenantId,
+  tenantName,
+  onClose,
+}: {
+  tenantId: string;
+  tenantName: string;
+  onClose: () => void;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const mut = useMutation({
+    mutationFn: () => createMagicLink(tenantId),
+    onSuccess: (res) => {
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      setUrl(`${origin}/magic/${res.token}`);
+      setError(null);
+    },
+    onError: (err) =>
+      setError(
+        err instanceof ApiError
+          ? err.payload.error
+          : "No pudimos generar el link."
+      ),
+  });
+
+  useEffect(() => {
+    mut.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function copy() {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard puede fallar sin https; el usuario copia a mano */
+    }
+  }
+
+  return (
+    <ModalShell title={`Link de acceso · ${tenantName}`} icon={Link2} onClose={onClose}>
+      <div style={{ padding: 18 }}>
+        <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55, marginBottom: 12 }}>
+          Mandale este link al cliente. Entra <strong>una sola vez</strong> y le
+          queda la sesión guardada en su navegador (sin contraseña). Si lo
+          pierde, generás otro.
+        </div>
+        {mut.isPending && <div style={loadingStyle}>Generando link…</div>}
+        {error && <div style={errorStyle}>{error}</div>}
+        {url && (
+          <>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input
+                readOnly
+                value={url}
+                onFocus={(e) => e.currentTarget.select()}
+                style={{
+                  ...inputStyle,
+                  fontFamily: "var(--font-jetbrains-mono)",
+                  fontSize: 11.5,
+                }}
+              />
+              <button type="button" onClick={copy} style={primaryBtn}>
+                {copied ? <Check size={13} /> : <Copy size={13} />}
+                {copied ? "Copiado" : "Copiar"}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => mut.mutate()}
+              disabled={mut.isPending}
+              style={{ ...miniGhostBtn, marginTop: 10 }}
+            >
+              Generar uno nuevo
+            </button>
+          </>
+        )}
+      </div>
+    </ModalShell>
   );
 }
 

@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { TenantNumber } from "./contract";
+import type { AuthUser, TenantNumber } from "./contract";
 
 // Centro de Control (cross-tenant). Solo super_admin. Lista TODOS los tenants
 // desde la DB (no el tenantManager FS-backed) + provisiona números sin cobrar.
@@ -22,6 +22,44 @@ export async function listPlatformTenants(
     { query: { search: search || undefined } }
   );
   return res.tenants ?? [];
+}
+
+// Crea un negocio con solo el nombre (DB-backed). El resto se configura
+// impersonando o se le entrega vía magic link.
+export async function createPlatformTenant(
+  name: string
+): Promise<{ id: string; name: string; slug: string }> {
+  const res = await api.post<{ tenant: { id: string; name: string; slug: string } }>(
+    "/api/admin/platform/tenants",
+    { name }
+  );
+  return res.tenant;
+}
+
+// Genera un magic link de acceso para el negocio. Devuelve el token UNA vez; el
+// panel arma la URL con su propio origin.
+export async function createMagicLink(
+  tenantId: string
+): Promise<{ token: string; expires_at: string }> {
+  return api.post<{ token: string; expires_at: string }>(
+    `/api/admin/platform/tenants/${encodeURIComponent(tenantId)}/magic-link`,
+    {}
+  );
+}
+
+export interface MagicRedeemResponse {
+  token: string;
+  expires_in: string;
+  user: AuthUser;
+}
+
+// Canjea un magic link (público, sin sesión previa) → crea la sesión del cliente.
+export function redeemMagicLink(token: string): Promise<MagicRedeemResponse> {
+  return api.post<MagicRedeemResponse>(
+    "/api/auth/magic/redeem",
+    { token },
+    { skipAuth: true }
+  );
 }
 
 // Provisiona un número y lo asigna al tenant SIN crear cobro de Stripe. El dueño
