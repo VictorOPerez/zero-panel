@@ -12,6 +12,8 @@ export interface PlatformTenant {
   monthly_token_limit: number;
   override: string | null;
   capabilities: string[];
+  whatsapp_number: string | null;
+  whatsapp_enabled: boolean;
 }
 
 export async function listPlatformTenants(
@@ -60,6 +62,44 @@ export function redeemMagicLink(token: string): Promise<MagicRedeemResponse> {
     { token },
     { skipAuth: true }
   );
+}
+
+// ── Telnyx: saldo del proveedor de números (super_admin) ───────────────────
+
+export interface TelnyxBalance {
+  balance: number;
+  creditLimit: number;
+  availableCredit: number;
+  currency: string;
+}
+
+export interface TelnyxAutoRecharge {
+  enabled: boolean;
+  thresholdAmount: number | null;
+  rechargeAmount: number | null;
+  preference: string | null;
+}
+
+export function getTelnyxBalance(): Promise<{
+  balance: TelnyxBalance;
+  add_funds_url: string;
+}> {
+  return api.get("/api/admin/platform/telnyx/balance");
+}
+
+export function getTelnyxAutoRecharge(): Promise<{
+  auto_recharge: TelnyxAutoRecharge;
+  add_funds_url: string;
+}> {
+  return api.get("/api/admin/platform/telnyx/auto-recharge");
+}
+
+export function setTelnyxAutoRecharge(body: {
+  enabled: boolean;
+  threshold_amount?: number;
+  recharge_amount?: number;
+}): Promise<{ auto_recharge: TelnyxAutoRecharge }> {
+  return api.patch("/api/admin/platform/telnyx/auto-recharge", body);
 }
 
 // Provisiona un número y lo asigna al tenant SIN crear cobro de Stripe. El dueño

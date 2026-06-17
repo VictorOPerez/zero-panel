@@ -3,6 +3,7 @@ import { MobileSidebar } from "@/components/mobile-sidebar";
 import { QueryProvider } from "@/providers/query-provider";
 import { MobileMenuButton } from "@/components/mobile-menu-button";
 import { PaymentBanner } from "@/components/payment-banner";
+import { ImpersonationBanner } from "@/components/platform/impersonation-banner";
 import { AuthGate } from "@/components/auth/auth-gate";
 import { FloatingConnectNudge } from "@/components/numbers/floating-connect-nudge";
 
@@ -70,6 +71,7 @@ export default function DashboardLayout({
               </div>
             </div>
 
+            <ImpersonationBanner />
             <PaymentBanner />
             <div
               style={{

@@ -50,10 +50,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Descartamos el tenant activo si no pertenece al nuevo user — evita que
     // una sesión previa deje cacheado un tenant_id ajeno y todas las calls
     // admin vuelvan 403.
+    // EXCEPCIÓN super_admin: el dueño de plataforma puede operar en CUALQUIER
+    // tenant (impersonación desde el Centro de Control). Su tenant activo NO se
+    // resetea aunque no esté en sus tenant_ids — si no, el AuthGate (que llama
+    // setSession en cada navegación al refrescar /me) lo sacaba del negocio que
+    // estaba impersonando y lo devolvía al suyo. Por eso "no cambiaba nada".
     const currentActive = get().activeTenantId;
     const userTenants = user.tenant_ids ?? [];
+    const isSuper = user.role === "super_admin";
     const nextActive =
-      currentActive && userTenants.includes(currentActive)
+      currentActive && (isSuper || userTenants.includes(currentActive))
         ? currentActive
         : userTenants.length === 1
           ? userTenants[0]

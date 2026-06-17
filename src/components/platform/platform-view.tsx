@@ -20,6 +20,7 @@ import {
   UserPlus,
   Link2,
   Copy,
+  MessageCircle,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { PageShell } from "@/components/panel/page-shell";
@@ -36,6 +37,7 @@ import {
   updateNumberForward,
 } from "@/lib/api/numbers";
 import { ApiError } from "@/lib/api/client";
+import { TelnyxBalanceCard } from "@/components/platform/telnyx-balance-card";
 import type { AvailableNumber, TenantNumber } from "@/lib/api/contract";
 
 // Celular del dueño para recibir la llamada de verificación de Meta (por voz).
@@ -123,6 +125,9 @@ function PlatformControl() {
         </button>
       }
     >
+      {/* Saldo del proveedor de números (Telnyx) — siempre visible */}
+      <TelnyxBalanceCard />
+
       {/* Celular del dueño para verificación de Meta */}
       <div
         style={{
@@ -276,13 +281,41 @@ function TenantCard({
           </div>
           <div
             style={{
-              fontSize: 10.5,
-              color: "var(--text-3)",
-              fontFamily: "var(--font-jetbrains-mono)",
-              marginTop: 2,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginTop: 3,
+              flexWrap: "wrap",
             }}
           >
-            {tenant.id}
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 11.5,
+                fontFamily: "var(--font-jetbrains-mono)",
+                color: tenant.whatsapp_number ? "var(--text-1)" : "var(--text-3)",
+              }}
+              title="Número de WhatsApp asignado"
+            >
+              <MessageCircle
+                size={12}
+                style={{ color: tenant.whatsapp_number ? "oklch(0.78 0.15 155)" : "var(--text-3)" }}
+              />
+              {tenant.whatsapp_number
+                ? `+${tenant.whatsapp_number.replace(/^\+/, "")}`
+                : "sin WhatsApp"}
+            </span>
+            <span
+              style={{
+                fontSize: 10,
+                color: "var(--text-3)",
+                fontFamily: "var(--font-jetbrains-mono)",
+              }}
+            >
+              {tenant.id}
+            </span>
           </div>
         </div>
 
