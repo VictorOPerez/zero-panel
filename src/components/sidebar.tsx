@@ -12,6 +12,7 @@ import {
   BookOpen,
   Users,
   CalendarClock,
+  CalendarDays,
   Package,
   ShoppingBag,
   Briefcase,
@@ -42,6 +43,7 @@ const TOOL_MENU_SECTIONS = [
   {
     label: "Operacional",
     items: [
+      { key: "calendar", label: "Calendario", href: "/calendar", icon: CalendarDays },
       { key: "knowledge", label: "Conocimiento", href: "/knowledge", icon: BookOpen },
       { key: "services", label: "Servicios", href: "/services", icon: Briefcase },
       { key: "gallery", label: "Galería", href: "/gallery", icon: ImageIcon },

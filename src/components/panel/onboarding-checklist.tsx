@@ -6,7 +6,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronRight, X, Sparkles } from "lucide-react";
 import { getTenant } from "@/lib/api/tenants";
 import { getTenantBrief } from "@/lib/api/brief";
-import { getNylasStatus } from "@/lib/api/nylas-calendar";
 import { listTenantServices } from "@/lib/api/services";
 import { getPaymentsProvider } from "@/lib/api/payments";
 
@@ -30,10 +29,6 @@ export function OnboardingChecklist({ tenantId }: { tenantId: string }) {
     queryKey: ["brief", tenantId],
     queryFn: () => getTenantBrief(tenantId),
   });
-  const nylasQ = useQuery({
-    queryKey: ["nylas-status", tenantId],
-    queryFn: () => getNylasStatus(tenantId),
-  });
   const servicesQ = useQuery({
     queryKey: ["services", tenantId],
     queryFn: () => listTenantServices(tenantId),
@@ -46,7 +41,6 @@ export function OnboardingChecklist({ tenantId }: { tenantId: string }) {
   const loading =
     tenantQ.isLoading ||
     briefQ.isLoading ||
-    nylasQ.isLoading ||
     servicesQ.isLoading ||
     paymentsQ.isLoading;
 
@@ -71,13 +65,6 @@ export function OnboardingChecklist({ tenantId }: { tenantId: string }) {
       hint: "Para que el agente sepa qué ofrecés y cuánto dura.",
       href: "/services",
       done: (servicesQ.data?.length ?? 0) > 0,
-    },
-    {
-      key: "calendar",
-      label: "Conectá tu calendario",
-      hint: "Para agendar turnos sin doble-bookear.",
-      href: "/calendar",
-      done: Boolean(nylasQ.data?.status?.connected),
     },
     {
       key: "payments",

@@ -57,3 +57,64 @@ export async function listUpcomingCalendarEvents(
     { query: { from: range.from, to: range.to } }
   );
 }
+
+// ── Calendario nativo: CRUD manual de reservas ────────────────────────────
+// Reusa el SDK admin del backend (overlap + tz + audit) que opera nativo: sin
+// Google/Nylas la reserva vive en la DB de Zero. El panel arma startIso/endIso
+// desde el slot + duración. En conflicto el backend devuelve 409 con
+// { reason:"overlap", conflicts } → reintentar con force:true para sobrescribir.
+
+export interface AppointmentInput {
+  startIso: string;
+  endIso: string;
+  title?: string;
+  clientName?: string;
+  clientPhone?: string;
+  force?: boolean;
+}
+
+export interface AppointmentMutationResult {
+  reservationId: string | null;
+  eventId?: string | null;
+  startIso: string;
+  endIso: string;
+  title: string;
+}
+
+export function createAppointment(
+  tenantId: string,
+  input: AppointmentInput
+): Promise<AppointmentMutationResult> {
+  return api.post<AppointmentMutationResult>(
+    `/api/admin/tenants/${encodeURIComponent(tenantId)}/calendar/appointments`,
+    input
+  );
+}
+
+export function updateAppointment(
+  tenantId: string,
+  reservationId: string,
+  input: Omit<AppointmentInput, "startIso" | "endIso"> & {
+    startIso?: string;
+    endIso?: string;
+  }
+): Promise<AppointmentMutationResult> {
+  return api.patch<AppointmentMutationResult>(
+    `/api/admin/tenants/${encodeURIComponent(
+      tenantId
+    )}/calendar/appointments/${encodeURIComponent(reservationId)}`,
+    input
+  );
+}
+
+export function cancelAppointment(
+  tenantId: string,
+  reservationId: string
+): Promise<{ ok: true; reservationId: string }> {
+  return apiFetch(
+    `/api/admin/tenants/${encodeURIComponent(
+      tenantId
+    )}/calendar/appointments/${encodeURIComponent(reservationId)}`,
+    { method: "DELETE" }
+  );
+}

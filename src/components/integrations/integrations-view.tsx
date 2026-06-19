@@ -20,7 +20,6 @@ import { OnboardingChecklist } from "@/components/panel/onboarding-checklist";
 import { WhatsappBusinessCard } from "@/components/channels/whatsapp-business-card";
 import { getPaymentsProvider, connectStripe } from "@/lib/api/payments";
 import { listTenantNumbers } from "@/lib/api/numbers";
-import { getNylasStatus } from "@/lib/api/nylas-calendar";
 import { ApiError } from "@/lib/api/client";
 
 export function IntegrationsView() {
@@ -55,7 +54,7 @@ function Home({ tenantId }: { tenantId: string }) {
       <div className="grid-integrations">
         <StripeConnectCard tenantId={tenantId} />
         <NumbersCard tenantId={tenantId} />
-        <CalendarCard tenantId={tenantId} />
+        <CalendarCard />
       </div>
     </PageShell>
   );
@@ -250,29 +249,23 @@ function NumbersCard({ tenantId }: { tenantId: string }) {
 
 // ────────────────────────────── Calendario ──────────────────────────────────
 
-function CalendarCard({ tenantId }: { tenantId: string }) {
-  const query = useQuery({
-    queryKey: ["nylas-status", tenantId],
-    queryFn: () => getNylasStatus(tenantId),
-  });
-  const connected = Boolean(query.data?.status?.connected);
-
+function CalendarCard() {
   return (
     <ConnectionCard
       icon={CalendarClock}
       accent="0.78 0.15 155"
       title="Calendario"
-      loading={query.isLoading}
-      badge={connected ? { label: "Conectado", tone: "ok" } : undefined}
+      badge={{ label: "Listo", tone: "ok" }}
       description={
         <>
-          Conectá Google, Outlook o iCloud para que el agente vea tu
-          disponibilidad real y agende turnos sin doble-bookear.
+          Tu agente agenda turnos en el calendario de Zero — sin que conectes
+          nada. Mirá la semana, agregá o reprogramá reservas a mano cuando
+          quieras.
         </>
       }
       footer={
-        <Link href="/calendar" style={connected ? secondaryLinkBtn : primaryCardBtn}>
-          {connected ? "Administrar" : "Conectar calendario"} <ArrowRight size={12} />
+        <Link href="/calendar" style={primaryCardBtn}>
+          Ver calendario <ArrowRight size={12} />
         </Link>
       }
     />

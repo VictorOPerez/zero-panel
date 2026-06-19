@@ -2,11 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import Link from "next/link";
-import { CalendarOff, Loader2, RefreshCw, Sparkles, User } from "lucide-react";
+import { Loader2, RefreshCw, Sparkles, User } from "lucide-react";
 import { listUpcomingCalendarEvents } from "@/lib/api/calendar";
-import { getCalendarStatus } from "@/lib/api/calendar";
-import { PageShell, cardStyle } from "@/components/panel/page-shell";
+import { PageShell } from "@/components/panel/page-shell";
 import { RequireTenant } from "@/components/panel/require-tenant";
 import type { CalendarLiveEvent } from "@/lib/api/contract";
 
@@ -28,12 +26,6 @@ function Bookings({ tenantId }: { tenantId: string }) {
   const rangeConfig = RANGES.find((r) => r.key === range)!;
   const { from, to } = useMemo(() => computeRange(rangeConfig.days), [rangeConfig.days]);
 
-  const statusQuery = useQuery({
-    queryKey: ["calendar-status", tenantId],
-    queryFn: () => getCalendarStatus(tenantId),
-    staleTime: 60_000,
-  });
-
   const eventsQuery = useQuery({
     queryKey: ["calendar-events", tenantId, from, to],
     queryFn: () => listUpcomingCalendarEvents(tenantId, { from, to }),
@@ -41,14 +33,13 @@ function Bookings({ tenantId }: { tenantId: string }) {
     refetchOnWindowFocus: true,
   });
 
-  const calendarConnected = statusQuery.data?.status?.connected;
   const events = eventsQuery.data?.events ?? [];
   const grouped = useMemo(() => groupByDay(events), [events]);
 
   return (
     <PageShell
       title="Reservas"
-      subtitle="Próximos turnos en Google Calendar. Se actualiza en vivo."
+      subtitle="Próximos turnos. Se actualiza en vivo."
       actions={
         <button
           type="button"
@@ -77,50 +68,6 @@ function Bookings({ tenantId }: { tenantId: string }) {
         </button>
       }
     >
-      {/* Estado: calendar no conectado → invitá a conectar */}
-      {statusQuery.data && calendarConnected === false && (
-        <div
-          className="glass"
-          style={{
-            ...cardStyle,
-            marginBottom: 14,
-            borderColor: "oklch(0.80 0.14 75 / 0.35)",
-            background: "oklch(0.80 0.14 75 / 0.06)",
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 10,
-          }}
-        >
-          <CalendarOff size={16} style={{ color: "var(--z-amber)", flexShrink: 0, marginTop: 2 }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, color: "var(--text-0)", fontSize: 13 }}>
-              Google Calendar no está conectado
-            </div>
-            <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 2, lineHeight: 1.4 }}>
-              Conectalo para ver y gestionar los turnos que el bot reserva.
-            </div>
-          </div>
-          <Link
-            href="/integrations"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "6px 12px",
-              borderRadius: 5,
-              background: "var(--aurora)",
-              color: "#0a0a0f",
-              fontSize: 12,
-              fontWeight: 600,
-              textDecoration: "none",
-              flexShrink: 0,
-            }}
-          >
-            Conectar
-          </Link>
-        </div>
-      )}
-
       {/* Tabs de rango */}
       <div
         role="tablist"
@@ -167,7 +114,7 @@ function Bookings({ tenantId }: { tenantId: string }) {
           Cargando…
         </div>
       ) : events.length === 0 ? (
-        <EmptyState connected={calendarConnected !== false} range={rangeConfig.label} />
+        <EmptyState range={rangeConfig.label} />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {grouped.map((group) => (
@@ -179,7 +126,7 @@ function Bookings({ tenantId }: { tenantId: string }) {
   );
 }
 
-function EmptyState({ connected, range }: { connected: boolean; range: string }) {
+function EmptyState({ range }: { range: string }) {
   return (
     <div
       style={{
@@ -198,9 +145,7 @@ function EmptyState({ connected, range }: { connected: boolean; range: string })
         No hay reservas activas
       </div>
       <div style={{ fontSize: 12, color: "var(--text-2)", maxWidth: 420, lineHeight: 1.5 }}>
-        {connected
-          ? `Ventana: ${range.toLowerCase()}. Las reservas canceladas y las que ya pasaron no se muestran.`
-          : "Conectá Google Calendar para empezar a ver los turnos acá."}
+        {`Ventana: ${range.toLowerCase()}. Las reservas canceladas y las que ya pasaron no se muestran.`}
       </div>
     </div>
   );
