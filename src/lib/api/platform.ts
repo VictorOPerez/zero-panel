@@ -55,7 +55,31 @@ export interface MagicRedeemResponse {
   user: AuthUser;
 }
 
-// Canjea un magic link (público, sin sesión previa) → crea la sesión del cliente.
+// Paso 1: pide el código de confirmación por email. Si el negocio no tiene email
+// real (o Gmail no está configurado), otp_required=false y se canjea directo.
+export function requestMagicCode(
+  token: string
+): Promise<{ otp_required: boolean; email_hint: string | null }> {
+  return api.post<{ otp_required: boolean; email_hint: string | null }>(
+    "/api/auth/magic/request-code",
+    { token },
+    { skipAuth: true }
+  );
+}
+
+// Paso 2: verifica el código → crea la sesión del cliente.
+export function verifyMagicCode(
+  token: string,
+  code: string
+): Promise<MagicRedeemResponse> {
+  return api.post<MagicRedeemResponse>(
+    "/api/auth/magic/verify-code",
+    { token, code },
+    { skipAuth: true }
+  );
+}
+
+// Canje directo (sin 2do factor) — solo cuando request-code dio otp_required=false.
 export function redeemMagicLink(token: string): Promise<MagicRedeemResponse> {
   return api.post<MagicRedeemResponse>(
     "/api/auth/magic/redeem",
