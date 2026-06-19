@@ -10,11 +10,15 @@ import type { NextConfig } from "next";
 //   - img/connect acotados    → imágenes y llamadas salen a destinos esperados
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  // connect.facebook.net = SDK del Embedded Signup de WhatsApp (conectar número
+  // a Meta desde el panel). Sin esto el SDK no carga ("FB SDK falló al cargar").
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://connect.facebook.net",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   "connect-src 'self' https: wss:",
+  // El Embedded Signup embebe un iframe de Facebook para el flujo de conexión.
+  "frame-src 'self' https://www.facebook.com https://web.facebook.com https://connect.facebook.net",
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'self'",
