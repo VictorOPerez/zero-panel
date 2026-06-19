@@ -7,9 +7,28 @@ import { useAuthStore } from "@/store/auth";
 import { me } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
 
+// Rutas que el CLIENTE (no super_admin) puede abrir. Todo lo demás es del panel
+// de administrador; si un cliente entra por URL directa, lo mandamos a /inbox.
+// El super_admin no tiene esta restricción (ve y entra a todo).
+const CLIENT_ALLOWED_PREFIXES = [
+  "/inbox",
+  "/conversations",
+  "/calendar",
+  "/billing",
+  "/payment-success",
+];
+
+function isClientAllowed(pathname: string): boolean {
+  return CLIENT_ALLOWED_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(p + "/")
+  );
+}
+
 /**
  * Guarda las rutas del dashboard: exige sesión, refresca /me en background
  * y si el usuario tiene múltiples tenants sin elegir, redirige a /select-tenant.
+ * Además, gatea por rol: el cliente solo accede a su menú reducido (inbox /
+ * calendario / suscripción); cualquier otra ruta lo redirige a /inbox.
  */
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -71,7 +90,19 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, token, activeTenantId]);
 
-  if (status !== "ready") {
+  // Gate por rol: el cliente solo navega su menú reducido. Cualquier otra ruta
+  // (escrita a mano o por link viejo) lo devuelve a /inbox. El super_admin pasa.
+  const blocked =
+    status === "ready" &&
+    user != null &&
+    user.role !== "super_admin" &&
+    !isClientAllowed(pathname);
+
+  useEffect(() => {
+    if (blocked) router.replace("/inbox");
+  }, [blocked, router]);
+
+  if (status !== "ready" || blocked) {
     return (
       <div
         style={{

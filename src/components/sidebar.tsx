@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, Fragment } from "react";
 import {
   Inbox,
   Home,
@@ -61,6 +61,15 @@ const TOOL_MENU_SECTIONS = [
   },
 ] as const;
 
+// Lo único que ve el CLIENTE (no super_admin). Todo lo demás es solo del panel
+// de administrador. Suscripción se deja para que el cliente pueda pagar/gestionar
+// su plan; el resto (brief, conexiones, números, herramientas) es del admin.
+const CLIENT_NAV_ITEMS = [
+  { key: "inbox", label: "Inbox", href: "/inbox", icon: Inbox },
+  { key: "calendar", label: "Calendario", href: "/calendar", icon: CalendarDays },
+  { key: "billing", label: "Suscripción", href: "/billing", icon: CreditCard },
+] as const;
+
 const CHANNELS = [
   { key: "wa", label: "WhatsApp", color: "#25D366", active: true, count: 0 },
 ];
@@ -68,7 +77,6 @@ const CHANNELS = [
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [toolsOpen, setToolsOpen] = useState(false);
 
   const hydrated = useAuthStore((s) => s.hydrated);
   const hydrate = useAuthStore((s) => s.hydrate);
@@ -97,6 +105,12 @@ export function Sidebar() {
     const [local] = user.email.split("@");
     return local.slice(0, 2).toUpperCase();
   })();
+
+  // Gate maestro de la navegación: solo el super_admin (vos) ve el panel
+  // completo; el cliente ve únicamente su menú reducido. Mientras hidrata,
+  // user es null → cae en la vista de cliente (default seguro, no filtra el
+  // panel admin por un instante).
+  const isSuper = user?.role === "super_admin";
 
   const roleLabel =
     user?.role === "super_admin"
@@ -231,38 +245,30 @@ export function Sidebar() {
         style={{ display: "flex", flexDirection: "column", gap: 1, overflowY: "auto", minHeight: 0 }}
         aria-label="Navegación principal"
       >
-        <div
-          style={{
-            padding: "0 4px 6px",
-            fontSize: 10,
-            textTransform: "uppercase",
-            letterSpacing: "0.12em",
-            color: "var(--text-3)",
-            fontWeight: 600,
-          }}
-        >
-          Esenciales
-        </div>
-        {ESSENTIAL_NAV_ITEMS.map((n) => (
-          <NavLinkItem key={n.key} item={n} active={isActive(n.href)} />
-        ))}
-
-        {/* Centro de Control — solo el dueño de plataforma (super_admin). El
-            cliente nunca ve esta sección porque su rol no la habilita. */}
-        {user?.role === "super_admin" && (
+        {isSuper ? (
+          // ── Vista ADMIN (super_admin): TODO visible inline. Las herramientas
+          //    salieron de la subventana y ahora se ven directo acá. ───────────
           <>
-            <div
-              style={{
-                padding: "14px 4px 6px",
-                fontSize: 10,
-                textTransform: "uppercase",
-                letterSpacing: "0.12em",
-                color: "var(--text-3)",
-                fontWeight: 600,
-              }}
-            >
-              Plataforma
-            </div>
+            <SectionLabel text="Esenciales" first />
+            {ESSENTIAL_NAV_ITEMS.map((n) => (
+              <NavLinkItem key={n.key} item={n} active={isActive(n.href)} />
+            ))}
+
+            {TOOL_MENU_SECTIONS.map((section) => (
+              <Fragment key={section.label}>
+                <SectionLabel text={section.label} />
+                {section.items.map((item) => (
+                  <NavLinkItem
+                    key={item.key}
+                    item={item}
+                    active={isActive(item.href)}
+                    locked={"feature" in item ? isLocked(item.feature) : false}
+                  />
+                ))}
+              </Fragment>
+            ))}
+
+            <SectionLabel text="Plataforma" />
             <NavLinkItem
               item={{
                 key: "platform",
@@ -273,88 +279,20 @@ export function Sidebar() {
               active={isActive("/platform")}
             />
           </>
+        ) : (
+          // ── Vista CLIENTE: solo Inbox + Calendario + Suscripción. ───────────
+          <>
+            <SectionLabel text="Menú" first />
+            {CLIENT_NAV_ITEMS.map((n) => (
+              <NavLinkItem key={n.key} item={n} active={isActive(n.href)} />
+            ))}
+          </>
         )}
       </nav>
 
       <div style={{ flex: 1, minHeight: 8 }} />
 
       <SidebarUsage tenantId={activeTenantId} />
-
-      <div style={{ position: "relative", marginBottom: 8 }}>
-        {toolsOpen && (
-          <div
-            className="glass"
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: 42,
-              zIndex: 20,
-              padding: 8,
-              borderRadius: 8,
-              border: "1px solid var(--hair)",
-              background: "rgba(10,10,15,0.96)",
-              boxShadow: "0 18px 44px rgba(0,0,0,0.36)",
-            }}
-          >
-            {TOOL_MENU_SECTIONS.map((section) => (
-              <div key={section.label} style={{ paddingBottom: 8 }}>
-                <div
-                  style={{
-                    padding: "4px 6px 6px",
-                    fontSize: 9.5,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.12em",
-                    color: "var(--text-3)",
-                    fontWeight: 600,
-                  }}
-                >
-                  {section.label}
-                </div>
-                {section.items.map((item) => (
-                  <NavLinkItem
-                    key={item.key}
-                    item={item}
-                    active={isActive(item.href)}
-                    locked={"feature" in item ? isLocked(item.feature) : false}
-                    compact
-                    onClick={() => setToolsOpen(false)}
-                  />
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
-
-        <button
-          type="button"
-          aria-expanded={toolsOpen}
-          aria-label="Abrir herramientas operacionales"
-          onClick={() => setToolsOpen((value) => !value)}
-          style={{
-            width: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
-            padding: "8px 9px",
-            borderRadius: 6,
-            border: "1px solid var(--hair)",
-            background: toolsOpen ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.025)",
-            color: "var(--text-1)",
-            cursor: "pointer",
-            fontSize: 12.5,
-          }}
-        >
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
-            <Settings size={15} style={{ color: toolsOpen ? "var(--z-cyan)" : "var(--text-2)" }} />
-            Herramientas
-          </span>
-          <span style={{ color: "var(--text-3)", fontFamily: "var(--font-jetbrains-mono)", fontSize: 10 }}>
-            {toolsOpen ? "ON" : "OFF"}
-          </span>
-        </button>
-      </div>
 
       {/* User */}
       <div
@@ -431,6 +369,23 @@ export function Sidebar() {
         </button>
       </div>
     </aside>
+  );
+}
+
+function SectionLabel({ text, first = false }: { text: string; first?: boolean }) {
+  return (
+    <div
+      style={{
+        padding: first ? "0 4px 6px" : "14px 4px 6px",
+        fontSize: 10,
+        textTransform: "uppercase",
+        letterSpacing: "0.12em",
+        color: "var(--text-3)",
+        fontWeight: 600,
+      }}
+    >
+      {text}
+    </div>
   );
 }
 
