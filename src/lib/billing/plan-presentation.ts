@@ -41,6 +41,7 @@ export const PLAN_TIERS: TierPresentation[] = [
     capacity: "~300 conversaciones/mes",
     tagline: "Para empezar a no perder ni un cliente.",
     features: [
+      "Número de WhatsApp propio INCLUIDO (alquiler + configuración, llave en mano)",
       "Agenda citas sola, 24/7",
       "Responde dudas y preguntas frecuentes",
       "Captura y guarda cada lead",
@@ -57,7 +58,7 @@ export const PLAN_TIERS: TierPresentation[] = [
     highlight: true,
     badge: "Recomendado",
     features: [
-      "Todo lo de Esencial",
+      "Todo lo de Esencial (incluye tu número de WhatsApp)",
       "Cobros con link de pago (Stripe)",
       "CRM y pipeline de clientes",
       "Catálogo de productos y ventas",
@@ -73,7 +74,7 @@ export const PLAN_TIERS: TierPresentation[] = [
     capacity: "~2.000 conversaciones/mes",
     tagline: "Para alto volumen y varias sucursales.",
     features: [
-      "Todo lo de Pro",
+      "Todo lo de Pro (incluye tu número de WhatsApp)",
       "Alto volumen de conversaciones",
       "Soporte prioritario",
       "Multi-sucursal",
@@ -87,7 +88,7 @@ export const PLAN_TIERS: TierPresentation[] = [
     tagline: "Configuración personalizada y onboarding dedicado.",
     contact: true,
     features: [
-      "Todo lo de Escala, sin límites fijos",
+      "Todo lo de Escala, sin límites fijos (incluye tu número de WhatsApp)",
       "Configuración personalizada (pago único)",
       "Integraciones a tu medida",
       "Onboarding y acompañamiento dedicado",

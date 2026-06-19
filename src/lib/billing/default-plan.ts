@@ -19,6 +19,7 @@ export const DEFAULT_PLAN: Required<
   token_limit: 3_000_000,
   description: "Automatizá tu atención 24/7 y multiplicá las reservas.",
   features: [
+    "Número de WhatsApp propio INCLUIDO (alquiler + configuración, llave en mano)",
     "Bot IA 24/7 que reserva turnos solo en tu Google Calendar",
     "Intervención humana directa: respondé desde tu WhatsApp y el bot se auto-pausa",
     "Bilingüe automático (ES / EN) — detecta el idioma del cliente",
