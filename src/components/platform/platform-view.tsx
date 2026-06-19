@@ -21,6 +21,9 @@ import {
   Link2,
   Copy,
   MessageCircle,
+  Palette,
+  Upload,
+  Image as ImageIcon,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { PageShell } from "@/components/panel/page-shell";
@@ -29,7 +32,10 @@ import {
   adminProvisionNumber,
   createPlatformTenant,
   createMagicLink,
+  getWaProfile,
+  updateWaProfile,
   type PlatformTenant,
+  type WaProfile,
 } from "@/lib/api/platform";
 import {
   searchAvailableNumbers,
@@ -242,6 +248,7 @@ function TenantCard({
   const router = useRouter();
   const setActiveTenant = useAuthStore((s) => s.setActiveTenant);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [brandOpen, setBrandOpen] = useState(false);
 
   // Impersonación: como super_admin pasa todos los gates del backend, "entrar"
   // = setear el tenant activo. El panel entero pasa a operar como ese negocio.
@@ -335,6 +342,15 @@ function TenantCard({
           <button type="button" onClick={() => setLinkOpen(true)} style={ghostBtn} title="Generar un link de acceso para el cliente">
             <Link2 size={13} /> Link
           </button>
+          <button
+            type="button"
+            onClick={() => setBrandOpen(true)}
+            style={ghostBtn}
+            title="Editar la marca de WhatsApp (logo + perfil)"
+            disabled={!tenant.whatsapp_enabled}
+          >
+            <Palette size={13} /> Marca
+          </button>
           <button type="button" onClick={onToggle} style={ghostBtn}>
             <Phone size={13} /> {expanded ? "Cerrar" : "Números"}
           </button>
@@ -350,6 +366,14 @@ function TenantCard({
           tenantId={tenant.id}
           tenantName={tenant.name}
           onClose={() => setLinkOpen(false)}
+        />
+      )}
+
+      {brandOpen && (
+        <BrandModal
+          tenantId={tenant.id}
+          tenantName={tenant.name}
+          onClose={() => setBrandOpen(false)}
         />
       )}
     </div>
@@ -1106,6 +1130,352 @@ function MagicLinkModal({
           </>
         )}
       </div>
+    </ModalShell>
+  );
+}
+
+// Rubros de WhatsApp Business (enum de Meta) → etiqueta legible en español.
+const VERTICAL_LABELS: Record<string, string> = {
+  UNDEFINED: "Sin especificar",
+  OTHER: "Otro",
+  AUTO: "Automotriz",
+  BEAUTY: "Belleza / estética",
+  APPAREL: "Ropa / moda",
+  EDU: "Educación",
+  ENTERTAIN: "Entretenimiento",
+  EVENT_PLAN: "Eventos",
+  FINANCE: "Finanzas",
+  GROCERY: "Supermercado",
+  GOVT: "Gobierno",
+  HOTEL: "Hotelería",
+  HEALTH: "Salud",
+  NONPROFIT: "Sin fines de lucro",
+  PROF_SERVICES: "Servicios profesionales",
+  RETAIL: "Comercio / retail",
+  TRAVEL: "Viajes",
+  RESTAURANT: "Restaurante",
+  NOT_A_BIZ: "No es un negocio",
+};
+
+const MAX_LOGO_BYTES = 5_000_000;
+
+function BrandModal({
+  tenantId,
+  tenantName,
+  onClose,
+}: {
+  tenantId: string;
+  tenantName: string;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    about: "",
+    description: "",
+    address: "",
+    email: "",
+    website: "",
+    vertical: "",
+  });
+  const [logo, setLogo] = useState<{ base64: string; mime: string; preview: string } | null>(null);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  // Para no pisar lo que el dueño escribe, hidratamos el form solo una vez.
+  const [hydratedFrom, setHydratedFrom] = useState<WaProfile | null>(null);
+
+  const profileQuery = useQuery({
+    queryKey: ["wa-profile", tenantId],
+    queryFn: () => getWaProfile(tenantId),
+  });
+
+  // Hidratar el form con el perfil actual (una sola vez, en render — patrón del
+  // resto del panel).
+  const profile = profileQuery.data?.profile ?? null;
+  if (profile && hydratedFrom !== profile) {
+    setHydratedFrom(profile);
+    setForm({
+      about: profile.about ?? "",
+      description: profile.description ?? "",
+      address: profile.address ?? "",
+      email: profile.email ?? "",
+      website: profile.websites?.[0] ?? "",
+      vertical: profile.vertical ?? "",
+    });
+  }
+
+  function pickLogo(file: File) {
+    setLogoError(null);
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      setLogoError("El logo debe ser JPEG o PNG.");
+      return;
+    }
+    if (file.size > MAX_LOGO_BYTES) {
+      setLogoError("El logo excede 5MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      setLogo({ base64: result, mime: file.type, preview: result });
+    };
+    reader.onerror = () => setLogoError("No pudimos leer el archivo.");
+    reader.readAsDataURL(file);
+  }
+
+  const saveMut = useMutation({
+    mutationFn: () =>
+      updateWaProfile(tenantId, {
+        about: form.about.trim(),
+        description: form.description.trim(),
+        address: form.address.trim(),
+        email: form.email.trim(),
+        websites: form.website.trim() ? [form.website.trim()] : [],
+        vertical: form.vertical || undefined,
+        logo_base64: logo?.base64,
+        logo_mime: logo?.mime,
+      }),
+    onSuccess: (res) => {
+      setSaved(true);
+      setLogo(null);
+      setSaveError(null);
+      setHydratedFrom(res.profile); // re-hidratar con lo guardado
+      qc.invalidateQueries({ queryKey: ["wa-profile", tenantId] });
+      setTimeout(() => setSaved(false), 2000);
+    },
+    onError: (err) =>
+      setSaveError(
+        err instanceof ApiError
+          ? typeof err.payload.error === "string"
+            ? err.payload.error
+            : "No pudimos guardar la marca."
+          : "No pudimos guardar la marca."
+      ),
+  });
+
+  const connected = profileQuery.data?.connected ?? false;
+  const currentLogoUrl = logo?.preview ?? profile?.profile_picture_url ?? null;
+
+  return (
+    <ModalShell
+      title={`Marca de WhatsApp · ${tenantName}`}
+      icon={Palette}
+      onClose={onClose}
+      busy={saveMut.isPending}
+    >
+      <div style={{ padding: 18, overflowY: "auto", maxHeight: "70vh" }}>
+        {profileQuery.isLoading && <div style={loadingStyle}>Cargando perfil…</div>}
+
+        {profileQuery.isError && (
+          <div style={errorStyle}>
+            No pudimos leer el perfil de WhatsApp. Reintentá.
+          </div>
+        )}
+
+        {profileQuery.data && !connected && (
+          <div
+            style={{
+              padding: "12px 14px",
+              borderRadius: 8,
+              border: "1px solid oklch(0.85 0.18 90 / 0.4)",
+              background: "oklch(0.85 0.18 90 / 0.08)",
+              color: "var(--text-1)",
+              fontSize: 12.5,
+              lineHeight: 1.5,
+            }}
+          >
+            Este negocio todavía no tiene WhatsApp conectado. Conectá el número a
+            Meta primero y después editás su marca (logo + perfil).
+          </div>
+        )}
+
+        {profileQuery.data && connected && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Logo */}
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 14,
+                  border: "1px solid var(--hair)",
+                  background: "rgba(255,255,255,0.03)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                  flexShrink: 0,
+                }}
+              >
+                {currentLogoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={currentLogoUrl}
+                    alt="Logo"
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <ImageIcon size={22} style={{ color: "var(--text-3)" }} />
+                )}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <label style={{ ...ghostBtn, cursor: "pointer", display: "inline-flex" }}>
+                  <Upload size={13} /> {logo ? "Cambiar logo" : "Subir logo"}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) pickLogo(file);
+                    }}
+                    style={{ display: "none" }}
+                  />
+                </label>
+                <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 6 }}>
+                  JPEG o PNG, cuadrado, hasta 5MB. Se publica al guardar.
+                </div>
+                {logoError && (
+                  <div style={{ fontSize: 11.5, color: "var(--z-red)", marginTop: 4 }}>
+                    {logoError}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <Field label="Acerca de (lo que aparece bajo el nombre · máx 139)">
+              <input
+                value={form.about}
+                onChange={(e) => setForm((f) => ({ ...f, about: e.target.value }))}
+                maxLength={139}
+                placeholder="Estética y bienestar en Miami"
+                style={inputStyle}
+              />
+            </Field>
+
+            <Field label="Descripción (máx 512)">
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                maxLength={512}
+                rows={3}
+                placeholder="Tratamientos faciales, masajes y más. Reservá por aquí."
+                style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
+              />
+            </Field>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Email">
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                  maxLength={128}
+                  placeholder="hola@negocio.com"
+                  style={inputStyle}
+                />
+              </Field>
+              <Field label="Sitio web">
+                <input
+                  value={form.website}
+                  onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
+                  maxLength={256}
+                  placeholder="https://negocio.com"
+                  style={inputStyle}
+                />
+              </Field>
+            </div>
+
+            <Field label="Dirección (máx 256)">
+              <input
+                value={form.address}
+                onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                maxLength={256}
+                placeholder="Av. Siempre Viva 123, Miami, FL"
+                style={inputStyle}
+              />
+            </Field>
+
+            <Field label="Rubro">
+              <select
+                value={form.vertical}
+                onChange={(e) => setForm((f) => ({ ...f, vertical: e.target.value }))}
+                style={{ ...inputStyle, cursor: "pointer" }}
+              >
+                <option value="">Sin especificar</option>
+                {(profileQuery.data.verticals ?? []).map((v) => (
+                  <option key={v} value={v}>
+                    {VERTICAL_LABELS[v] ?? v}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <div
+              style={{
+                fontSize: 11.5,
+                color: "var(--text-2)",
+                lineHeight: 1.5,
+                paddingTop: 4,
+                borderTop: "1px solid var(--hair)",
+              }}
+            >
+              El <strong>nombre que ve el cliente</strong> (display name) se
+              gestiona aparte en WhatsApp Manager y necesita aprobación de Meta
+              (24–48h) + un sitio web. Esto de acá (logo + perfil) se publica al
+              instante, sin aprobación.
+            </div>
+
+            {saveError && (
+              <div style={{ ...errorStyle, marginBottom: 0 }}>{saveError}</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {profileQuery.data && connected && (
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            justifyContent: "flex-end",
+            alignItems: "center",
+            padding: "12px 18px",
+            borderTop: "1px solid var(--hair)",
+            background: "rgba(0,0,0,0.15)",
+          }}
+        >
+          {saved && (
+            <span
+              style={{
+                fontSize: 12,
+                color: "var(--z-green)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                marginRight: "auto",
+              }}
+            >
+              <CheckCircle2 size={13} /> Marca publicada
+            </span>
+          )}
+          <button type="button" onClick={onClose} disabled={saveMut.isPending} style={ghostBtn}>
+            Cerrar
+          </button>
+          <button
+            type="button"
+            onClick={() => saveMut.mutate()}
+            disabled={saveMut.isPending}
+            style={primaryBtn}
+          >
+            {saveMut.isPending ? (
+              <Loader2 size={13} style={{ animation: "spin 900ms linear infinite" }} />
+            ) : (
+              <Check size={13} />
+            )}
+            Publicar en WhatsApp
+          </button>
+        </div>
+      )}
     </ModalShell>
   );
 }

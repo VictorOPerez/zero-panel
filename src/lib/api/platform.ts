@@ -102,6 +102,51 @@ export function setTelnyxAutoRecharge(body: {
   return api.patch("/api/admin/platform/telnyx/auto-recharge", body);
 }
 
+// ── MARCA: perfil de WhatsApp por negocio (super_admin) ────────────────────
+
+export interface WaProfile {
+  about: string | null;
+  address: string | null;
+  description: string | null;
+  email: string | null;
+  profile_picture_url: string | null;
+  websites: string[];
+  vertical: string | null;
+}
+
+export interface WaProfileResponse {
+  connected: boolean;
+  profile: WaProfile | null;
+  verticals: string[];
+}
+
+export function getWaProfile(tenantId: string): Promise<WaProfileResponse> {
+  return api.get<WaProfileResponse>(
+    `/api/admin/tenants/${encodeURIComponent(tenantId)}/whatsapp-cloud/profile`
+  );
+}
+
+export interface WaProfileUpdateBody {
+  about?: string;
+  address?: string;
+  description?: string;
+  email?: string;
+  websites?: string[];
+  vertical?: string;
+  logo_base64?: string;
+  logo_mime?: string;
+}
+
+export function updateWaProfile(
+  tenantId: string,
+  body: WaProfileUpdateBody
+): Promise<{ profile: WaProfile }> {
+  return api.post<{ profile: WaProfile }>(
+    `/api/admin/tenants/${encodeURIComponent(tenantId)}/whatsapp-cloud/profile`,
+    body
+  );
+}
+
 // Provisiona un número y lo asigna al tenant SIN crear cobro de Stripe. El dueño
 // lo conecta a Meta él mismo (OTP por voz) y se lo entrega listo al cliente.
 export async function adminProvisionNumber(
