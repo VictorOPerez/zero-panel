@@ -239,6 +239,10 @@ export interface TenantSummary {
 export interface TenantContext extends TenantSummary {
   persona?: TenantPersonaConfig;
   llm?: unknown;
+  // true si este tenant es el dueño de la plataforma (NavApex, vía
+  // ZERO_PLATFORM_OWNER_TENANT_IDS). El banner lo usa para marcar en verde
+  // "tu cuenta · super admin" en vez del ámbar de sub-cuenta de cliente.
+  is_platform_owner?: boolean;
 }
 
 // ── Calendar live events (cache de Google Calendar) ──────────────────────

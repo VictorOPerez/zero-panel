@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
-import { Eye, LayoutGrid, MessageCircle } from "lucide-react";
+import { Eye, LayoutGrid, MessageCircle, ShieldCheck } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { getTenant } from "@/lib/api/tenants";
 
@@ -38,6 +38,11 @@ export function ImpersonationBanner() {
 
   const name = q.data?.tenant?.business?.name || activeTenantId;
   const waNumber = q.data?.tenant?.channels?.whatsapp?.number?.trim();
+  // NavApex (tenant dueño de plataforma) → verde "tu cuenta · super admin".
+  // Un negocio cliente → ámbar "sub-cuenta".
+  const isOwner = q.data?.tenant?.is_platform_owner === true;
+  const hue = isOwner ? "155" : "75"; // verde vs ámbar
+  const accent = isOwner ? "0.78 0.15 155" : "0.85 0.16 75";
 
   return (
     <div
@@ -47,18 +52,30 @@ export function ImpersonationBanner() {
         alignItems: "center",
         gap: 10,
         padding: "7px 16px",
-        background:
-          "linear-gradient(90deg, oklch(0.80 0.16 75 / 0.16), oklch(0.80 0.16 75 / 0.06))",
-        borderBottom: "1px solid oklch(0.80 0.16 75 / 0.35)",
-        color: "var(--z-amber, oklch(0.85 0.16 75))",
+        background: `linear-gradient(90deg, oklch(0.80 0.16 ${hue} / 0.16), oklch(0.80 0.16 ${hue} / 0.06))`,
+        borderBottom: `1px solid oklch(0.80 0.16 ${hue} / 0.35)`,
+        color: `oklch(${accent})`,
         fontSize: 12.5,
         flexWrap: "wrap",
       }}
     >
-      <Eye size={14} style={{ flexShrink: 0 }} />
+      {isOwner ? (
+        <ShieldCheck size={14} style={{ flexShrink: 0 }} />
+      ) : (
+        <Eye size={14} style={{ flexShrink: 0 }} />
+      )}
       <span>
-        Estás dentro de la sub-cuenta:{" "}
-        <strong style={{ color: "var(--text-0)" }}>{name}</strong>
+        {isOwner ? (
+          <>
+            Tu cuenta · <strong style={{ color: "var(--text-0)" }}>Super admin</strong> ·{" "}
+            <strong style={{ color: "var(--text-0)" }}>{name}</strong>
+          </>
+        ) : (
+          <>
+            Estás dentro de la sub-cuenta:{" "}
+            <strong style={{ color: "var(--text-0)" }}>{name}</strong>
+          </>
+        )}
       </span>
       <span
         style={{
@@ -87,9 +104,9 @@ export function ImpersonationBanner() {
           gap: 6,
           padding: "4px 10px",
           borderRadius: 5,
-          border: "1px solid oklch(0.80 0.16 75 / 0.4)",
+          border: `1px solid oklch(0.80 0.16 ${hue} / 0.4)`,
           background: "transparent",
-          color: "var(--z-amber, oklch(0.85 0.16 75))",
+          color: `oklch(${accent})`,
           fontSize: 11.5,
           fontWeight: 600,
           cursor: "pointer",
