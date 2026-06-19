@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { me } from "@/lib/api/auth";
@@ -33,6 +34,7 @@ function isClientAllowed(pathname: string): boolean {
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const queryClient = useQueryClient();
 
   const hydrated = useAuthStore((s) => s.hydrated);
   const hydrate = useAuthStore((s) => s.hydrate);
@@ -89,6 +91,20 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, token, activeTenantId]);
+
+  // CAMBIO DE NEGOCIO (impersonación / select-tenant): al cambiar el tenant
+  // activo, TIRAMOS todo el caché de React Query. Sin esto, la data del negocio
+  // anterior queda retenida (refetch-interval/socket la mantienen caliente) y se
+  // ve cruzada con la del nuevo — "información de chats como si fuera falsa".
+  // Un único QueryClient sirve a toda la app, así que limpiarlo acá cubre todas
+  // las vistas. Guardamos el tenant previo para no limpiar en el primer render.
+  const prevTenantRef = useRef(activeTenantId);
+  useEffect(() => {
+    if (prevTenantRef.current !== activeTenantId) {
+      prevTenantRef.current = activeTenantId;
+      queryClient.clear();
+    }
+  }, [activeTenantId, queryClient]);
 
   // Gate por rol: el cliente solo navega su menú reducido. Cualquier otra ruta
   // (escrita a mano o por link viejo) lo devuelve a /inbox. El super_admin pasa.

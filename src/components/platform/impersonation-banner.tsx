@@ -36,10 +36,17 @@ export function ImpersonationBanner() {
 
   if (!enabled) return null;
 
-  const name = q.data?.tenant?.business?.name || activeTenantId;
+  // Nombre robusto: mientras carga mostramos "Cargando negocio…" (NO el UUID, que
+  // se lee como "data falsa"); si falla, lo avisamos en vez de caer al UUID en
+  // silencio. Solo mostramos el nombre real cuando llegó.
   const waNumber = q.data?.tenant?.channels?.whatsapp?.number?.trim();
+  const name = q.isLoading
+    ? "Cargando negocio…"
+    : q.isError
+      ? "no se pudo cargar el negocio"
+      : q.data?.tenant?.business?.name || `negocio ${String(activeTenantId).slice(0, 8)}…`;
   // NavApex (tenant dueño de plataforma) → verde "tu cuenta · super admin".
-  // Un negocio cliente → ámbar "sub-cuenta".
+  // Un negocio cliente → ámbar "sub-cuenta". Mientras carga: ámbar por defecto.
   const isOwner = q.data?.tenant?.is_platform_owner === true;
   const hue = isOwner ? "155" : "75"; // verde vs ámbar
   const accent = isOwner ? "0.78 0.15 155" : "0.85 0.16 75";
@@ -72,7 +79,8 @@ export function ImpersonationBanner() {
           </>
         ) : (
           <>
-            Estás dentro de la sub-cuenta:{" "}
+            <strong style={{ color: "var(--text-0)" }}>Modo admin</strong> · estás
+            operando la sub-cuenta de un cliente:{" "}
             <strong style={{ color: "var(--text-0)" }}>{name}</strong>
           </>
         )}

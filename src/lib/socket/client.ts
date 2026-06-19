@@ -49,6 +49,15 @@ export function getSocket(): ZeroSocket {
 }
 
 export function connectSocket(tenantId: string): ZeroSocket {
+  // CAMBIO DE NEGOCIO (impersonación): si ya estábamos unidos a OTRO tenant,
+  // reseteamos el socket por completo. Los rooms de socket.io son aditivos —
+  // un simple join:tenant nos dejaría unidos a la sala del negocio anterior Y
+  // del nuevo a la vez, y nos llegarían los mensajes EN VIVO del negocio viejo
+  // (data cruzada entre negocios = "chats falsos"). Reconectar limpio garantiza
+  // que el socket quede SOLO en la sala del negocio actual.
+  if (joinedTenantId && joinedTenantId !== tenantId) {
+    disconnectSocket();
+  }
   const s = getSocket();
   joinedTenantId = tenantId;
   if (!s.connected) {
