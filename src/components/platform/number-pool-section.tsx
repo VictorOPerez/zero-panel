@@ -10,16 +10,24 @@ import {
   Trash2,
   Layers,
   CheckCircle2,
+  PhoneForwarded,
+  MessageCircle,
+  Search,
+  Undo2,
 } from "lucide-react";
 import {
   listNumberPool,
-  addNumberToPool,
   retirePoolNumber,
+  searchPoolNumbers,
+  provisionPoolNumber,
+  setPoolForward,
+  connectPoolWhatsapp,
+  reclaimPoolNumber,
   type PoolNumber,
+  type AvailableToBuy,
 } from "@/lib/api/platform";
 import { ApiError } from "@/lib/api/client";
 
-// IDs públicos del Embedded Signup (el App Secret nunca toca el frontend).
 const FB_APP_ID = process.env.NEXT_PUBLIC_META_FB_APP_ID ?? "";
 const FB_GRAPH_VERSION = process.env.NEXT_PUBLIC_META_FB_GRAPH_VERSION ?? "v22.0";
 const ES_CONFIG_ID = process.env.NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID ?? "";
@@ -31,193 +39,19 @@ interface SignupPayload {
   waba_id: string;
   business_id: string;
 }
-
 interface SessionInfoData {
   phone_number_id?: string;
   waba_id?: string;
   business_id?: string;
 }
 
-export function NumberPoolSection() {
-  const qc = useQueryClient();
-  const [addOpen, setAddOpen] = useState(false);
-
-  const poolQuery = useQuery({
-    queryKey: ["number-pool"],
-    queryFn: listNumberPool,
-  });
-
-  const numbers = poolQuery.data ?? [];
-  const available = numbers.filter((n) => n.status === "available").length;
-
-  return (
-    <div
-      className="glass"
-      style={{
-        padding: "14px 16px",
-        borderRadius: 12,
-        border: "1px solid var(--hair)",
-        marginBottom: 14,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-        <Layers size={16} style={{ color: "var(--z-cyan)" }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-0)" }}>
-            Pool de números
-          </div>
-          <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-            Números pre-habilitados en WhatsApp listos para alquilar. El bot de
-            onboarding los asigna al cliente nuevo.
-          </div>
-        </div>
-        <span
-          style={{
-            fontSize: 11.5,
-            color: available > 0 ? "var(--z-green)" : "var(--text-3)",
-            fontWeight: 600,
-            fontFamily: "var(--font-jetbrains-mono)",
-          }}
-          title="Números disponibles para asignar"
-        >
-          {available} disponible{available === 1 ? "" : "s"}
-        </span>
-        <button type="button" onClick={() => setAddOpen(true)} style={primaryBtn}>
-          <Plus size={13} /> Agregar al pool
-        </button>
-      </div>
-
-      {poolQuery.isLoading && (
-        <div style={{ fontSize: 12.5, color: "var(--text-3)", padding: "6px 0" }}>
-          Cargando pool…
-        </div>
-      )}
-
-      {poolQuery.isError && (
-        <div style={errorStyle}>No pudimos cargar el pool. Reintentá.</div>
-      )}
-
-      {poolQuery.data && numbers.length === 0 && (
-        <div style={{ fontSize: 12.5, color: "var(--text-3)", padding: "6px 0", lineHeight: 1.5 }}>
-          El pool está vacío. Conectá un número que ya hayas habilitado en
-          WhatsApp (Embedded Signup) bajo tu infraestructura para dejarlo listo
-          para alquilar.
-        </div>
-      )}
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {numbers.map((n) => (
-          <PoolNumberLine key={n.id} number={n} />
-        ))}
-      </div>
-
-      {addOpen && (
-        <AddToPoolModal
-          onClose={() => setAddOpen(false)}
-          onAdded={() => {
-            qc.invalidateQueries({ queryKey: ["number-pool"] });
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function PoolNumberLine({ number }: { number: PoolNumber }) {
-  const qc = useQueryClient();
-  const retireMut = useMutation({
-    mutationFn: () => retirePoolNumber(number.id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["number-pool"] }),
-  });
-
-  const tone: ChipTone =
-    number.status === "available"
-      ? "green"
-      : number.status === "assigned"
-        ? "cyan"
-        : number.status === "reserved"
-          ? "amber"
-          : "muted";
-
-  const display = number.whatsapp_number
-    ? `+${number.whatsapp_number.replace(/^\+/, "")}`
-    : `id ${number.phone_number_id}`;
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "9px 12px",
-        borderRadius: 8,
-        border: "1px solid var(--hair)",
-        background: "rgba(255,255,255,0.02)",
-        flexWrap: "wrap",
-      }}
-    >
-      <Phone size={13} style={{ color: "var(--z-cyan)", flexShrink: 0 }} />
-      <span
-        style={{
-          fontSize: 13,
-          fontWeight: 600,
-          fontFamily: "var(--font-jetbrains-mono)",
-        }}
-      >
-        {display}
-      </span>
-      {number.label && (
-        <span style={{ fontSize: 11, color: "var(--text-3)" }}>{number.label}</span>
-      )}
-      <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-        <Chip label={number.status} tone={tone} />
-        {number.status === "available" && (
-          <button
-            type="button"
-            onClick={() => {
-              if (
-                typeof window !== "undefined" &&
-                window.confirm("¿Retirar este número del pool? No se ofrecerá más.")
-              ) {
-                retireMut.mutate();
-              }
-            }}
-            disabled={retireMut.isPending}
-            style={miniGhostBtn}
-            title="Retirar del pool"
-          >
-            {retireMut.isPending ? (
-              <Loader2 size={11} style={{ animation: "spin 900ms linear infinite" }} />
-            ) : (
-              <Trash2 size={11} />
-            )}
-            Retirar
-          </button>
-        )}
-      </span>
-    </div>
-  );
-}
-
-function AddToPoolModal({
-  onClose,
-  onAdded,
-}: {
-  onClose: () => void;
-  onAdded: () => void;
-}) {
-  const [label, setLabel] = useState("");
-  const [phase, setPhase] = useState<
-    "idle" | "loading_sdk" | "popup_open" | "exchanging" | "done"
-  >("idle");
-  const [error, setError] = useState<string | null>(null);
-
-  // Captura del session_info por postMessage (mismo mecanismo que el card de
-  // WhatsApp): usamos refs porque el handler corre fuera del ciclo de render.
+// Hook reutilizable: lanza el Embedded Signup de Meta y resuelve el payload
+// (code + phone_number_id + waba_id). Lo usan "Conectar WhatsApp" y "Agregar
+// existente". El App Secret nunca toca el frontend (intercambio en backend).
+function useEmbeddedSignup() {
   const sessionInfoRef = useRef<SessionInfoData | null>(null);
-  const sessionInfoResolverRef = useRef<((d: SessionInfoData | null) => void) | null>(
-    null
-  );
+  const resolverRef = useRef<((d: SessionInfoData | null) => void) | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
@@ -237,14 +71,14 @@ function AddToPoolModal({
         if (parsed.type !== "WA_EMBEDDED_SIGNUP") return;
         if (parsed.event === "FINISH" && parsed.data) {
           sessionInfoRef.current = parsed.data;
-          sessionInfoResolverRef.current?.(parsed.data);
-          sessionInfoResolverRef.current = null;
+          resolverRef.current?.(parsed.data);
+          resolverRef.current = null;
         } else if (parsed.event === "CANCEL" || parsed.event === "ERROR") {
-          sessionInfoResolverRef.current?.(null);
-          sessionInfoResolverRef.current = null;
+          resolverRef.current?.(null);
+          resolverRef.current = null;
         }
       } catch {
-        /* ignorar no-JSON */
+        /* ignore */
       }
     }
     window.addEventListener("message", onMessage);
@@ -254,7 +88,6 @@ function AddToPoolModal({
   async function loadSdk(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((window as any).FB) return;
-    setPhase("loading_sdk");
     await new Promise<void>((resolve, reject) => {
       const existing = document.getElementById("fb-sdk") as HTMLScriptElement | null;
       if (existing) {
@@ -276,48 +109,16 @@ function AddToPoolModal({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fb = (window as any).FB;
     if (!fb) throw new Error("FB SDK no expuso window.FB");
-    fb.init({
-      appId: FB_APP_ID,
-      autoLogAppEvents: true,
-      xfbml: false,
-      version: FB_GRAPH_VERSION,
-    });
+    fb.init({ appId: FB_APP_ID, autoLogAppEvents: true, xfbml: false, version: FB_GRAPH_VERSION });
   }
 
-  const addMut = useMutation({
-    mutationFn: (payload: SignupPayload) =>
-      addNumberToPool({
-        code: payload.code,
-        phone_number_id: payload.phone_number_id,
-        waba_id: payload.waba_id || undefined,
-        business_id: payload.business_id || undefined,
-        label: label.trim() || undefined,
-      }),
-    onSuccess: () => {
-      setPhase("done");
-      onAdded();
-    },
-    onError: (err) => {
-      setError(
-        err instanceof ApiError
-          ? typeof err.payload.error === "string"
-            ? err.payload.error
-            : "No pudimos agregar el número al pool."
-          : "No pudimos agregar el número al pool."
-      );
-      setPhase("idle");
-    },
-  });
-
-  async function onConnect() {
-    setError(null);
+  async function launch(): Promise<SignupPayload | null> {
+    setBusy(true);
+    sessionInfoRef.current = null;
     try {
       await loadSdk();
-      setPhase("popup_open");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const fb = (window as any).FB;
-      if (!fb) throw new Error("FB SDK no está cargado");
-
       const response = await new Promise<{ authResponse?: { code?: string } | null }>(
         (resolve) => {
           fb.login((res: { authResponse?: { code?: string } | null }) => resolve(res), {
@@ -328,48 +129,538 @@ function AddToPoolModal({
         }
       );
       const code = response.authResponse?.code;
-      if (!code) {
-        setPhase("idle");
-        return; // canceló
-      }
-
-      let info = sessionInfoRef.current;
+      if (!code) return null;
+      let info: SessionInfoData | null = sessionInfoRef.current;
       if (!info) {
         info = await new Promise<SessionInfoData | null>((resolve) => {
-          sessionInfoResolverRef.current = resolve;
+          resolverRef.current = resolve;
           window.setTimeout(() => {
-            if (sessionInfoResolverRef.current === resolve) {
-              sessionInfoResolverRef.current = null;
+            if (resolverRef.current === resolve) {
+              resolverRef.current = null;
               resolve(sessionInfoRef.current);
             }
           }, 10_000);
         });
       }
-
       if (!info?.phone_number_id) {
-        setError(
-          "Meta no devolvió el phone_number_id. Probablemente cancelaste el flujo o no completaste todos los pasos."
-        );
-        setPhase("idle");
-        return;
+        throw new Error("Meta no devolvió el phone_number_id (¿cancelaste el flujo?).");
       }
-
-      setPhase("exchanging");
-      addMut.mutate({
+      return {
         code,
         phone_number_id: info.phone_number_id,
         waba_id: info.waba_id ?? "",
         business_id: info.business_id ?? "",
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setPhase("idle");
+      };
+    } finally {
+      setBusy(false);
     }
   }
 
-  const busy = phase === "loading_sdk" || phase === "popup_open" || phase === "exchanging";
-  const configMissing = !FB_APP_ID || !ES_CONFIG_ID;
+  return { launch, busy, configMissing: !FB_APP_ID || !ES_CONFIG_ID };
+}
 
+export function NumberPoolSection() {
+  const qc = useQueryClient();
+  const [buyOpen, setBuyOpen] = useState(false);
+  const [connectFor, setConnectFor] = useState<PoolNumber | null>(null);
+
+  const poolQuery = useQuery({ queryKey: ["number-pool"], queryFn: listNumberPool });
+  const numbers = poolQuery.data ?? [];
+  const available = numbers.filter((n) => n.status === "available").length;
+  const refresh = () => qc.invalidateQueries({ queryKey: ["number-pool"] });
+
+  return (
+    <div
+      className="glass"
+      style={{ padding: "14px 16px", borderRadius: 12, border: "1px solid var(--hair)", marginBottom: 14 }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+        <Layers size={16} style={{ color: "var(--z-cyan)" }} />
+        <div style={{ flex: 1, minWidth: 160 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-0)" }}>Pool de números</div>
+          <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+            Comprá números, conectalos a WhatsApp y dejalos listos para alquilar. El
+            bot los asigna solo al cliente nuevo.
+          </div>
+        </div>
+        <span
+          style={{
+            fontSize: 11.5,
+            color: available > 0 ? "var(--z-green)" : "var(--text-3)",
+            fontWeight: 600,
+            fontFamily: "var(--font-jetbrains-mono)",
+          }}
+        >
+          {available} disponible{available === 1 ? "" : "s"}
+        </span>
+        <button type="button" onClick={() => setBuyOpen(true)} style={primaryBtn}>
+          <Plus size={13} /> Comprar número
+        </button>
+      </div>
+
+      {poolQuery.isLoading && (
+        <div style={{ fontSize: 12.5, color: "var(--text-3)", padding: "6px 0" }}>Cargando pool…</div>
+      )}
+      {poolQuery.isError && <div style={errorStyle}>No pudimos cargar el pool. Reintentá.</div>}
+      {poolQuery.data && numbers.length === 0 && (
+        <div style={{ fontSize: 12.5, color: "var(--text-3)", padding: "6px 0", lineHeight: 1.5 }}>
+          El pool está vacío. Comprá un número para empezar a armar tu inventario.
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {numbers.map((n) => (
+          <PoolNumberLine
+            key={n.id}
+            number={n}
+            onConnect={() => setConnectFor(n)}
+            onChanged={refresh}
+          />
+        ))}
+      </div>
+
+      {buyOpen && <BuyModal onClose={() => setBuyOpen(false)} onDone={refresh} />}
+      {connectFor && (
+        <ConnectModal
+          number={connectFor}
+          onClose={() => setConnectFor(null)}
+          onDone={refresh}
+        />
+      )}
+    </div>
+  );
+}
+
+function PoolNumberLine({
+  number,
+  onConnect,
+  onChanged,
+}: {
+  number: PoolNumber;
+  onConnect: () => void;
+  onChanged: () => void;
+}) {
+  const [forward, setForward] = useState(number.forward_to_phone ?? "");
+  const [lastServer, setLastServer] = useState(number.forward_to_phone);
+  if (lastServer !== number.forward_to_phone) {
+    setLastServer(number.forward_to_phone);
+    setForward(number.forward_to_phone ?? "");
+  }
+
+  const forwardMut = useMutation({
+    mutationFn: (v: string | null) => setPoolForward(number.id, v),
+    onSuccess: onChanged,
+  });
+  const retireMut = useMutation({
+    mutationFn: () => retirePoolNumber(number.id),
+    onSuccess: onChanged,
+  });
+  const reclaimMut = useMutation({
+    mutationFn: () => reclaimPoolNumber(number.id),
+    onSuccess: onChanged,
+  });
+
+  const tone: ChipTone =
+    number.status === "available"
+      ? "green"
+      : number.status === "assigned"
+        ? "cyan"
+        : number.status === "provisioning"
+          ? "amber"
+          : number.status === "reserved"
+            ? "amber"
+            : "muted";
+
+  const display =
+    (number.whatsapp_number && `+${number.whatsapp_number.replace(/^\+/, "")}`) ||
+    (number.phone_e164 && `+${number.phone_e164.replace(/^\+/, "")}`) ||
+    (number.phone_number_id ? `id ${number.phone_number_id}` : "—");
+
+  const dirty = forward.trim() !== (number.forward_to_phone ?? "");
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        padding: "10px 12px",
+        borderRadius: 8,
+        border: "1px solid var(--hair)",
+        background: "rgba(255,255,255,0.02)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <Phone size={13} style={{ color: "var(--z-cyan)", flexShrink: 0 }} />
+        <span style={{ fontSize: 13, fontWeight: 600, fontFamily: "var(--font-jetbrains-mono)" }}>
+          {display}
+        </span>
+        {number.label && <span style={{ fontSize: 11, color: "var(--text-3)" }}>{number.label}</span>}
+        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <Chip label={statusLabel(number.status)} tone={tone} />
+          {number.status === "assigned" && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm("¿Devolver este número al pool? Se desconecta del negocio actual y queda disponible para alquilar a otro."))
+                  reclaimMut.mutate();
+              }}
+              disabled={reclaimMut.isPending}
+              style={miniGhostBtn}
+              title="Devolver al pool"
+            >
+              {reclaimMut.isPending ? <Spin /> : <Undo2 size={11} />} Devolver
+            </button>
+          )}
+          {(number.status === "provisioning" || number.status === "available") && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm("¿Retirar este número del pool? No se ofrecerá más."))
+                  retireMut.mutate();
+              }}
+              disabled={retireMut.isPending}
+              style={miniGhostBtn}
+              title="Retirar del pool"
+            >
+              {retireMut.isPending ? <Spin /> : <Trash2 size={11} />} Retirar
+            </button>
+          )}
+        </span>
+      </div>
+
+      {/* Acciones de un número comprado pero sin WhatsApp todavía */}
+      {number.status === "provisioning" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={miniLabel}>
+            <PhoneForwarded size={11} /> Reenvío
+          </span>
+          <input
+            type="tel"
+            value={forward}
+            onChange={(e) => setForward(e.target.value)}
+            placeholder="tu celular para Meta"
+            style={{ ...inputStyle, width: 170, padding: "5px 8px", fontSize: 12 }}
+            disabled={forwardMut.isPending}
+          />
+          {dirty && (
+            <button
+              type="button"
+              onClick={() => forwardMut.mutate(forward.trim() || null)}
+              disabled={forwardMut.isPending}
+              style={miniPrimaryBtn}
+            >
+              {forwardMut.isPending ? <Spin /> : <CheckCircle2 size={11} />} Guardar
+            </button>
+          )}
+          <button type="button" onClick={onConnect} style={{ ...fbMiniBtn }}>
+            <MessageCircle size={12} /> Conectar WhatsApp
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Comprar número (search + provision) ────────────────────────────────────
+function BuyModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [areaCode, setAreaCode] = useState("");
+  const [results, setResults] = useState<AvailableToBuy[] | null>(null);
+  const [selected, setSelected] = useState<AvailableToBuy | null>(null);
+  const [forward, setForward] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const searchMut = useMutation({
+    mutationFn: () => searchPoolNumbers("US", areaCode.trim() || undefined),
+    onSuccess: (items) => {
+      setResults(items);
+      setSelected(items[0] ?? null);
+      setError(null);
+    },
+    onError: (err) =>
+      setError(
+        err instanceof ApiError && err.payload.error === "provider_missing_key"
+          ? "Falta TELNYX_API_KEY en el backend."
+          : "Error buscando números."
+      ),
+  });
+
+  const buyMut = useMutation({
+    mutationFn: () => {
+      if (!selected) throw new Error("no_selection");
+      return provisionPoolNumber({
+        phone_e164: selected.phone_e164,
+        country: selected.country,
+        forward_to_phone: forward.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      setDone(true);
+      onDone();
+    },
+    onError: (err) =>
+      setError(
+        err instanceof ApiError
+          ? typeof err.payload.detail === "string"
+            ? err.payload.detail
+            : err.payload.error
+          : "No pudimos comprar el número."
+      ),
+  });
+
+  useEffect(() => {
+    searchMut.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <ModalShell title="Comprar número al pool" onClose={onClose} busy={buyMut.isPending}>
+      <div style={{ padding: 18 }}>
+        {done ? (
+          <div style={okBox}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
+              <CheckCircle2 size={17} style={{ color: "var(--z-green)" }} />
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Número comprado</div>
+            </div>
+            <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
+              Quedó en el pool como <strong>comprado</strong>. Ahora poné tu celular
+              en el reenvío y tocá <strong>Conectar WhatsApp</strong> para hacer el
+              Embedded Signup (la verificación por voz suena en tu cel).
+            </div>
+            <button type="button" onClick={onClose} style={{ ...primaryBtn, marginTop: 14 }}>
+              Listo
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end", marginBottom: 14 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={miniLabel}>Area code (opcional · US)</span>
+                <input
+                  value={areaCode}
+                  onChange={(e) => setAreaCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="305"
+                  inputMode="numeric"
+                  style={inputStyle}
+                  disabled={searchMut.isPending}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelected(null);
+                  searchMut.mutate();
+                }}
+                disabled={searchMut.isPending}
+                style={primaryBtn}
+              >
+                {searchMut.isPending ? <Spin /> : <Search size={13} />} Buscar
+              </button>
+            </div>
+
+            {error && <div style={errorStyle}>{error}</div>}
+            {results && results.length === 0 && (
+              <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>Sin resultados. Probá otro area code.</div>
+            )}
+
+            {results && results.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
+                {results.map((item) => {
+                  const isSel = selected?.phone_e164 === item.phone_e164;
+                  return (
+                    <button
+                      key={item.phone_e164}
+                      type="button"
+                      onClick={() => setSelected(item)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "9px 12px",
+                        borderRadius: 8,
+                        border: isSel ? "1px solid var(--z-cyan)" : "1px solid var(--hair)",
+                        background: isSel ? "oklch(0.80 0.13 200 / 0.08)" : "transparent",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        color: "var(--text-0)",
+                      }}
+                    >
+                      <Phone size={13} style={{ color: isSel ? "var(--z-cyan)" : "var(--text-3)" }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-jetbrains-mono)" }}>
+                          +{item.phone_e164}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-3)" }}>{item.region || item.country}</div>
+                      </div>
+                      {isSel && <CheckCircle2 size={14} style={{ color: "var(--z-cyan)" }} />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {selected && (
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 14 }}>
+                <span style={miniLabel}>Tu celular para la verificación de Meta (opcional)</span>
+                <input
+                  type="tel"
+                  value={forward}
+                  onChange={(e) => setForward(e.target.value)}
+                  placeholder="+13526021604"
+                  style={inputStyle}
+                />
+              </label>
+            )}
+          </>
+        )}
+      </div>
+      {!done && (
+        <ModalFooter>
+          <button type="button" onClick={onClose} disabled={buyMut.isPending} style={ghostBtn}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => buyMut.mutate()}
+            disabled={!selected || buyMut.isPending}
+            style={{ ...primaryBtn, opacity: !selected ? 0.5 : 1 }}
+          >
+            {buyMut.isPending ? <Spin /> : <CheckCircle2 size={13} />}
+            {selected ? `Comprar +${selected.phone_e164}` : "Comprar"}
+          </button>
+        </ModalFooter>
+      )}
+    </ModalShell>
+  );
+}
+
+// ── Conectar WhatsApp a un número del pool (Embedded Signup) ────────────────
+function ConnectModal({
+  number,
+  onClose,
+  onDone,
+}: {
+  number: PoolNumber;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { launch, busy, configMissing } = useEmbeddedSignup();
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const connectMut = useMutation({
+    mutationFn: (payload: SignupPayload) =>
+      connectPoolWhatsapp(number.id, {
+        code: payload.code,
+        phone_number_id: payload.phone_number_id,
+        waba_id: payload.waba_id || undefined,
+        business_id: payload.business_id || undefined,
+      }),
+    onSuccess: () => {
+      setDone(true);
+      onDone();
+    },
+    onError: (err) =>
+      setError(
+        err instanceof ApiError
+          ? typeof err.payload.error === "string"
+            ? err.payload.error
+            : "No pudimos conectar WhatsApp."
+          : "No pudimos conectar WhatsApp."
+      ),
+  });
+
+  async function onConnect() {
+    setError(null);
+    try {
+      const payload = await launch();
+      if (!payload) return; // canceló
+      connectMut.mutate(payload);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  const working = busy || connectMut.isPending;
+
+  return (
+    <ModalShell title="Conectar WhatsApp" onClose={onClose} busy={working}>
+      <div style={{ padding: 18 }}>
+        {done ? (
+          <div style={okBox}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              <CheckCircle2 size={17} style={{ color: "var(--z-green)" }} />
+              <div style={{ fontSize: 14, fontWeight: 600 }}>WhatsApp conectado</div>
+            </div>
+            <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5, marginTop: 8 }}>
+              El número quedó <strong>disponible</strong> en el pool, listo para que
+              el bot se lo asigne al próximo cliente.
+            </div>
+            <button type="button" onClick={onClose} style={{ ...primaryBtn, marginTop: 14 }}>
+              Listo
+            </button>
+          </div>
+        ) : (
+          <>
+            <p style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5, margin: "0 0 14px" }}>
+              Vas a conectar{" "}
+              <strong>
+                {number.phone_e164 ? `+${number.phone_e164}` : "este número"}
+              </strong>{" "}
+              a WhatsApp con el flujo oficial de Meta. Verificá por <strong>voz</strong>:
+              la llamada de Meta suena en el celular que pusiste en el reenvío.
+            </p>
+            {configMissing && (
+              <div style={errorStyle}>
+                Falta NEXT_PUBLIC_META_FB_APP_ID o NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID.
+              </div>
+            )}
+            {error && <div style={errorStyle}>{error}</div>}
+            <button
+              type="button"
+              onClick={onConnect}
+              disabled={working || configMissing}
+              style={{ ...fbBtn, opacity: working || configMissing ? 0.6 : 1, cursor: working || configMissing ? "not-allowed" : "pointer" }}
+            >
+              {working && <Spin />}
+              {connectMut.isPending ? "Conectando…" : busy ? "Esperando a Meta…" : "Conectar con Facebook"}
+            </button>
+          </>
+        )}
+      </div>
+    </ModalShell>
+  );
+}
+
+// ── helpers de UI ──────────────────────────────────────────────────────────
+function statusLabel(s: PoolNumber["status"]): string {
+  return s === "provisioning"
+    ? "comprado"
+    : s === "available"
+      ? "disponible"
+      : s === "reserved"
+        ? "reservado"
+        : s === "assigned"
+          ? "asignado"
+          : "retirado";
+}
+
+function Spin() {
+  return <Loader2 size={11} style={{ animation: "spin 900ms linear infinite" }} />;
+}
+
+function ModalShell({
+  title,
+  onClose,
+  busy,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  busy?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <div
       role="dialog"
@@ -382,147 +673,53 @@ function AddToPoolModal({
       <div
         className="glass"
         style={{
-          width: "min(520px, 100%)",
+          width: "min(560px, 100%)",
+          maxHeight: "90vh",
+          display: "flex",
+          flexDirection: "column",
           borderRadius: 12,
           border: "1px solid var(--hair-strong)",
           background: "var(--surface-1, rgba(15,15,20,0.96))",
           overflow: "hidden",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "14px 18px",
-            borderBottom: "1px solid var(--hair)",
-          }}
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderBottom: "1px solid var(--hair)" }}>
           <Layers size={15} style={{ color: "var(--z-cyan)" }} />
-          <div style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>Agregar número al pool</div>
+          <div style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{title}</div>
           <button type="button" onClick={onClose} disabled={busy} aria-label="Cerrar" style={iconBtn}>
             <X size={14} />
           </button>
         </div>
-
-        <div style={{ padding: 18 }}>
-          {phase === "done" ? (
-            <div
-              style={{
-                padding: 14,
-                borderRadius: 10,
-                border: "1px solid oklch(0.78 0.15 155 / 0.35)",
-                background: "oklch(0.78 0.15 155 / 0.07)",
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                <CheckCircle2 size={17} style={{ color: "var(--z-green)" }} />
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-0)" }}>
-                  Número agregado al pool
-                </div>
-              </div>
-              <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
-                Quedó disponible para que el bot de onboarding se lo asigne al
-                próximo cliente.
-              </div>
-              <button type="button" onClick={onClose} style={{ ...primaryBtn, alignSelf: "flex-start" }}>
-                Listo
-              </button>
-            </div>
-          ) : (
-            <>
-              <p style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5, margin: "0 0 14px" }}>
-                Conectá un número que vayas a alquilar usando el flujo oficial de
-                Meta (Embedded Signup) bajo tu infraestructura. Guardamos sus
-                credenciales en el pool <strong>sin asignarlo</strong> a ningún
-                negocio todavía.
-              </p>
-
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 14 }}>
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: "var(--text-3)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    fontWeight: 600,
-                  }}
-                >
-                  Etiqueta (opcional · solo para vos)
-                </span>
-                <input
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                  placeholder="Número Miami · lote 1"
-                  style={inputStyle}
-                  disabled={busy}
-                />
-              </label>
-
-              {configMissing && (
-                <div style={{ ...errorStyle }}>
-                  Falta NEXT_PUBLIC_META_FB_APP_ID o
-                  NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID en el frontend.
-                </div>
-              )}
-              {error && <div style={errorStyle}>{error}</div>}
-
-              <button
-                type="button"
-                onClick={onConnect}
-                disabled={busy || configMissing}
-                style={{
-                  ...fbBtn,
-                  opacity: busy || configMissing ? 0.6 : 1,
-                  cursor: busy || configMissing ? "not-allowed" : "pointer",
-                }}
-              >
-                {busy && <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />}
-                {phase === "loading_sdk"
-                  ? "Cargando SDK…"
-                  : phase === "popup_open"
-                    ? "Esperando autorización…"
-                    : phase === "exchanging"
-                      ? "Guardando en el pool…"
-                      : "Conectar con Facebook"}
-              </button>
-            </>
-          )}
-        </div>
+        <div style={{ overflowY: "auto" }}>{children}</div>
       </div>
     </div>
   );
 }
 
-// ─────────────────────────────── estilos ──────────────────────────────────
+function ModalFooter({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 8,
+        justifyContent: "flex-end",
+        padding: "12px 18px",
+        borderTop: "1px solid var(--hair)",
+        background: "rgba(0,0,0,0.15)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 type ChipTone = "cyan" | "green" | "amber" | "muted";
-
 function Chip({ label, tone }: { label: string; tone: ChipTone }) {
   const map: Record<ChipTone, { color: string; bg: string; border: string }> = {
-    cyan: {
-      color: "oklch(0.80 0.13 200)",
-      bg: "oklch(0.80 0.13 200 / 0.10)",
-      border: "oklch(0.80 0.13 200 / 0.4)",
-    },
-    green: {
-      color: "oklch(0.78 0.18 145)",
-      bg: "oklch(0.78 0.18 145 / 0.12)",
-      border: "oklch(0.78 0.18 145 / 0.4)",
-    },
-    amber: {
-      color: "oklch(0.85 0.18 90)",
-      bg: "oklch(0.85 0.18 90 / 0.10)",
-      border: "oklch(0.85 0.18 90 / 0.4)",
-    },
-    muted: {
-      color: "var(--text-3)",
-      bg: "rgba(255,255,255,0.04)",
-      border: "var(--hair)",
-    },
+    cyan: { color: "oklch(0.80 0.13 200)", bg: "oklch(0.80 0.13 200 / 0.10)", border: "oklch(0.80 0.13 200 / 0.4)" },
+    green: { color: "oklch(0.78 0.18 145)", bg: "oklch(0.78 0.18 145 / 0.12)", border: "oklch(0.78 0.18 145 / 0.4)" },
+    amber: { color: "oklch(0.85 0.18 90)", bg: "oklch(0.85 0.18 90 / 0.10)", border: "oklch(0.85 0.18 90 / 0.4)" },
+    muted: { color: "var(--text-3)", bg: "rgba(255,255,255,0.04)", border: "var(--hair)" },
   };
   const cfg = map[tone];
   return (
@@ -556,7 +753,16 @@ const overlayStyle: React.CSSProperties = {
   justifyContent: "center",
   padding: 16,
 };
-
+const miniLabel: React.CSSProperties = {
+  fontSize: 10,
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  color: "var(--text-3)",
+  fontWeight: 600,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+};
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "7px 10px",
@@ -569,7 +775,6 @@ const inputStyle: React.CSSProperties = {
   outline: "none",
   minWidth: 0,
 };
-
 const primaryBtn: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -583,7 +788,45 @@ const primaryBtn: React.CSSProperties = {
   fontWeight: 600,
   cursor: "pointer",
 };
-
+const ghostBtn: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "7px 14px",
+  borderRadius: 5,
+  border: "1px solid var(--hair)",
+  background: "transparent",
+  color: "var(--text-1)",
+  fontSize: 12,
+  fontWeight: 500,
+  cursor: "pointer",
+};
+const miniPrimaryBtn: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: "5px 9px",
+  borderRadius: 5,
+  border: "none",
+  background: "var(--aurora)",
+  color: "#0a0a0f",
+  fontSize: 11,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+const miniGhostBtn: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: "5px 9px",
+  borderRadius: 5,
+  border: "1px solid var(--hair)",
+  background: "transparent",
+  color: "var(--text-1)",
+  fontSize: 11,
+  fontWeight: 500,
+  cursor: "pointer",
+};
 const fbBtn: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -598,21 +841,19 @@ const fbBtn: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
 };
-
-const miniGhostBtn: React.CSSProperties = {
+const fbMiniBtn: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  gap: 4,
-  padding: "5px 9px",
+  gap: 5,
+  padding: "5px 10px",
   borderRadius: 5,
-  border: "1px solid var(--hair)",
-  background: "transparent",
-  color: "var(--text-1)",
-  fontSize: 11,
-  fontWeight: 500,
+  border: "none",
+  background: "#1877F2",
+  color: "white",
+  fontSize: 11.5,
+  fontWeight: 600,
   cursor: "pointer",
 };
-
 const iconBtn: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -626,7 +867,6 @@ const iconBtn: React.CSSProperties = {
   cursor: "pointer",
   flexShrink: 0,
 };
-
 const errorStyle: React.CSSProperties = {
   padding: "10px 12px",
   borderRadius: 8,
@@ -635,4 +875,10 @@ const errorStyle: React.CSSProperties = {
   color: "var(--z-red)",
   fontSize: 12.5,
   marginBottom: 12,
+};
+const okBox: React.CSSProperties = {
+  padding: 14,
+  borderRadius: 10,
+  border: "1px solid oklch(0.78 0.15 155 / 0.35)",
+  background: "oklch(0.78 0.15 155 / 0.07)",
 };

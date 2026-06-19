@@ -178,15 +178,83 @@ export function updateWaProfile(
 
 export interface PoolNumber {
   id: string;
-  phone_number_id: string;
+  phone_number_id: string | null;
   waba_id: string | null;
   whatsapp_number: string | null;
-  status: "available" | "reserved" | "assigned" | "retired";
+  phone_e164: string | null;
+  country: string | null;
+  forward_to_phone: string | null;
+  provider: string | null;
+  status: "provisioning" | "available" | "reserved" | "assigned" | "retired";
   reserved_until: string | null;
   assigned_tenant_id: string | null;
   assigned_at: string | null;
   label: string | null;
   created_at: string;
+}
+
+export interface AvailableToBuy {
+  phone_e164: string;
+  country: string;
+  region: string | null;
+}
+
+// Busca números disponibles en el proveedor para comprar al pool.
+export async function searchPoolNumbers(
+  country: string,
+  areaCode?: string
+): Promise<AvailableToBuy[]> {
+  const res = await api.get<{ numbers: AvailableToBuy[] }>(
+    "/api/admin/platform/number-pool/search",
+    { query: { country, area_code: areaCode || undefined } }
+  );
+  return res.numbers ?? [];
+}
+
+// Compra un número al pool (Telnyx), sin tenant.
+export async function provisionPoolNumber(body: {
+  phone_e164: string;
+  country: string;
+  forward_to_phone?: string;
+  label?: string;
+}): Promise<PoolNumber> {
+  const res = await api.post<{ number: PoolNumber }>(
+    "/api/admin/platform/number-pool/provision",
+    body
+  );
+  return res.number;
+}
+
+export async function setPoolForward(
+  id: string,
+  forwardToPhone: string | null
+): Promise<PoolNumber> {
+  const res = await api.patch<{ number: PoolNumber }>(
+    `/api/admin/platform/number-pool/${encodeURIComponent(id)}/forward`,
+    { forward_to_phone: forwardToPhone ?? "" }
+  );
+  return res.number;
+}
+
+// Conecta WhatsApp (Embedded Signup) a un número comprado del pool.
+export async function connectPoolWhatsapp(
+  id: string,
+  body: { code: string; phone_number_id: string; waba_id?: string; business_id?: string }
+): Promise<PoolNumber> {
+  const res = await api.post<{ number: PoolNumber }>(
+    `/api/admin/platform/number-pool/${encodeURIComponent(id)}/connect`,
+    body
+  );
+  return res.number;
+}
+
+// Devuelve un número asignado al pool (lo desconecta del tenant).
+export async function reclaimPoolNumber(id: string): Promise<PoolNumber> {
+  const res = await api.post<{ number: PoolNumber }>(
+    `/api/admin/platform/number-pool/${encodeURIComponent(id)}/reclaim`,
+    {}
+  );
+  return res.number;
 }
 
 export async function listNumberPool(): Promise<PoolNumber[]> {

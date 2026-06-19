@@ -13,7 +13,6 @@ import {
   ShieldAlert,
   Building2,
   PhoneForwarded,
-  ExternalLink,
   LogIn,
   Check,
   Trash2,
@@ -29,23 +28,21 @@ import { useAuthStore } from "@/store/auth";
 import { PageShell } from "@/components/panel/page-shell";
 import {
   listPlatformTenants,
-  adminProvisionNumber,
   createPlatformTenant,
   createMagicLink,
   getWaProfile,
   updateWaProfile,
+  listNumberPool,
+  assignPoolNumber,
   type PlatformTenant,
   type WaProfile,
+  type PoolNumber,
 } from "@/lib/api/platform";
-import {
-  searchAvailableNumbers,
-  listTenantNumbers,
-  updateNumberForward,
-} from "@/lib/api/numbers";
+import { listTenantNumbers, updateNumberForward } from "@/lib/api/numbers";
 import { ApiError } from "@/lib/api/client";
 import { TelnyxBalanceCard } from "@/components/platform/telnyx-balance-card";
 import { NumberPoolSection } from "@/components/platform/number-pool-section";
-import type { AvailableNumber, TenantNumber } from "@/lib/api/contract";
+import type { TenantNumber } from "@/lib/api/contract";
 
 // Celular del dueño para recibir la llamada de verificación de Meta (por voz).
 // Se guarda en el browser del dueño (es su propio centro de control); el botón
@@ -416,7 +413,7 @@ function TenantNumbersPanel({
           onClick={() => setWizardOpen(true)}
           style={{ ...primaryBtn, marginLeft: "auto" }}
         >
-          <Plus size={13} /> Provisionar (sin cobro)
+          <Plus size={13} /> Asignar del pool
         </button>
       </div>
 
@@ -424,8 +421,8 @@ function TenantNumbersPanel({
 
       {numbersQuery.data && numbersQuery.data.length === 0 && (
         <div style={{ fontSize: 12.5, color: "var(--text-3)", padding: "6px 0" }}>
-          Este negocio todavía no tiene números. Provisioná uno para entregárselo
-          listo.
+          Sin números directos. Asigná uno del pool para entregárselo listo (o el
+          bot lo hace solo en el onboarding).
         </div>
       )}
 
@@ -441,14 +438,13 @@ function TenantNumbersPanel({
       </div>
 
       {wizardOpen && (
-        <ProvisionWizard
+        <AssignFromPoolModal
           tenantId={tenantId}
-          defaultForward={ownerForward}
           onClose={() => setWizardOpen(false)}
-          onProvisioned={() => {
-            qc.invalidateQueries({
-              queryKey: ["platform-tenant-numbers", tenantId],
-            });
+          onAssigned={() => {
+            qc.invalidateQueries({ queryKey: ["platform-tenant-numbers", tenantId] });
+            qc.invalidateQueries({ queryKey: ["platform-tenants"] });
+            qc.invalidateQueries({ queryKey: ["number-pool"] });
           }}
         />
       )}
@@ -591,86 +587,52 @@ function NumberLine({
   );
 }
 
-function ProvisionWizard({
+function AssignFromPoolModal({
   tenantId,
-  defaultForward,
   onClose,
-  onProvisioned,
+  onAssigned,
 }: {
   tenantId: string;
-  defaultForward: string;
   onClose: () => void;
-  onProvisioned: () => void;
+  onAssigned: () => void;
 }) {
-  const [areaCode, setAreaCode] = useState("");
-  const [results, setResults] = useState<AvailableNumber[] | null>(null);
-  const [selected, setSelected] = useState<AvailableNumber | null>(null);
-  const [forwardToPhone, setForwardToPhone] = useState(defaultForward);
+  const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<TenantNumber | null>(null);
+  const [done, setDone] = useState<PoolNumber | null>(null);
 
-  const searchMut = useMutation({
-    mutationFn: () =>
-      searchAvailableNumbers(tenantId, {
-        country: "US",
-        areaCode: areaCode.trim() || undefined,
-        limit: 20,
-      }),
-    onSuccess: (items) => {
-      setResults(items);
-      setSelected(items[0] ?? null);
-      setError(null);
-    },
-    onError: (err) => {
-      setError(
-        err instanceof ApiError && err.payload.error === "provider_missing_key"
-          ? "Falta TELNYX_API_KEY en el backend. Cargala en Railway para poder comprar números."
-          : err instanceof ApiError
-            ? err.payload.error
-            : "Error buscando números."
-      );
-      setResults(null);
-      setSelected(null);
-    },
-  });
+  const poolQuery = useQuery({ queryKey: ["number-pool"], queryFn: listNumberPool });
+  const available = (poolQuery.data ?? []).filter((n) => n.status === "available");
 
-  useEffect(() => {
-    searchMut.mutate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const provisionMut = useMutation({
+  const assignMut = useMutation({
     mutationFn: () => {
       if (!selected) throw new Error("no_selection");
-      return adminProvisionNumber(tenantId, {
-        phone_e164: selected.phone_e164,
-        country: selected.country,
-        forward_to_phone: forwardToPhone.trim() || undefined,
-      });
+      return assignPoolNumber(selected, tenantId);
     },
     onSuccess: (number) => {
       setDone(number);
-      onProvisioned();
+      onAssigned();
     },
-    onError: (err) => {
+    onError: (err) =>
       setError(
-        err instanceof ApiError && err.payload.error === "provider_missing_key"
-          ? "Falta TELNYX_API_KEY en el backend."
-          : err instanceof ApiError
-            ? typeof err.payload.detail === "string"
-              ? err.payload.detail
-              : err.payload.error
-            : "No pudimos provisionar el número."
-      );
-    },
+        err instanceof ApiError
+          ? typeof err.payload.error === "string"
+            ? err.payload.error
+            : "No pudimos asignar el número."
+          : "No pudimos asignar el número."
+      ),
   });
+
+  const label = (n: PoolNumber) =>
+    (n.whatsapp_number && `+${n.whatsapp_number.replace(/^\+/, "")}`) ||
+    (n.phone_e164 && `+${n.phone_e164.replace(/^\+/, "")}`) ||
+    n.id;
 
   return (
     <div
       role="dialog"
       aria-modal="true"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !provisionMut.isPending) onClose();
+        if (e.target === e.currentTarget && !assignMut.isPending) onClose();
       }}
       style={{
         position: "fixed",
@@ -687,7 +649,7 @@ function ProvisionWizard({
       <div
         className="glass"
         style={{
-          width: "min(620px, 100%)",
+          width: "min(520px, 100%)",
           maxHeight: "90vh",
           display: "flex",
           flexDirection: "column",
@@ -707,13 +669,11 @@ function ProvisionWizard({
           }}
         >
           <Phone size={15} style={{ color: "var(--z-cyan)" }} />
-          <div style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>
-            Provisionar número (sin cobro)
-          </div>
+          <div style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>Asignar número del pool</div>
           <button
             type="button"
             onClick={onClose}
-            disabled={provisionMut.isPending}
+            disabled={assignMut.isPending}
             aria-label="Cerrar"
             style={iconBtn}
           >
@@ -734,36 +694,11 @@ function ProvisionWizard({
               <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
                 <CheckCircle2 size={17} style={{ color: "var(--z-green)" }} />
                 <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-0)" }}>
-                  Número provisionado · +{done.phone_e164}
+                  Número asignado · {label(done)}
                 </div>
               </div>
               <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55 }}>
-                Quedó asignado al negocio <strong>sin cobro</strong>. Ahora
-                conectalo a WhatsApp vos mismo:
-                <ol style={{ margin: "8px 0 0", paddingLeft: 18, display: "flex", flexDirection: "column", gap: 5 }}>
-                  <li>
-                    Verificá que el reenvío apunte a tu celular{" "}
-                    {done.forward_to_phone ? `(+${done.forward_to_phone})` : "(usá «Redirigir a mí» en la lista)"}.
-                  </li>
-                  <li>
-                    Abrí{" "}
-                    <a
-                      href="https://business.facebook.com/wa/manage/phone-numbers/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={linkStyle}
-                    >
-                      WhatsApp Manager → Phone numbers{" "}
-                      <ExternalLink size={10} style={{ display: "inline", verticalAlign: "middle" }} />
-                    </a>{" "}
-                    y agregá <strong>+{done.phone_e164}</strong> verificando por
-                    <strong> llamada (voz)</strong>.
-                  </li>
-                  <li>
-                    Cuando termines, pasá el reenvío al teléfono del cliente (o
-                    limpialo) con los botones de la lista.
-                  </li>
-                </ol>
+                Quedó conectado a este negocio: el bot ya responde por ese WhatsApp.
               </div>
               <button type="button" onClick={onClose} style={{ ...primaryBtn, marginTop: 14 }}>
                 Listo
@@ -771,50 +706,32 @@ function ProvisionWizard({
             </div>
           ) : (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end", marginBottom: 14 }}>
-                <Field label="Area code (opcional · US)">
-                  <input
-                    value={areaCode}
-                    onChange={(e) => setAreaCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                    placeholder="305"
-                    inputMode="numeric"
-                    style={inputStyle}
-                    disabled={searchMut.isPending}
-                  />
-                </Field>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelected(null);
-                    searchMut.mutate();
-                  }}
-                  disabled={searchMut.isPending}
-                  style={primaryBtn}
-                >
-                  {searchMut.isPending ? (
-                    <Loader2 size={13} style={{ animation: "spin 900ms linear infinite" }} />
-                  ) : (
-                    <Search size={13} />
-                  )}
-                  Buscar
-                </button>
+              <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5, marginBottom: 12 }}>
+                Elegí un número <strong>disponible</strong> del pool para entregárselo
+                a este negocio. Las credenciales de WhatsApp se copian al instante y
+                el bot empieza a responder por ese número.
               </div>
+
+              {poolQuery.isLoading && <div style={loadingStyle}>Cargando pool…</div>}
 
               {error && <div style={errorStyle}>{error}</div>}
 
-              {results && results.length === 0 && (
-                <div style={loadingStyle}>Sin resultados. Probá otro area code.</div>
+              {poolQuery.data && available.length === 0 && (
+                <div style={loadingStyle}>
+                  No hay números disponibles en el pool. Comprá y conectá uno en la
+                  sección «Pool de números».
+                </div>
               )}
 
-              {results && results.length > 0 && (
+              {available.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {results.map((item) => {
-                    const isSel = selected?.phone_e164 === item.phone_e164;
+                  {available.map((item) => {
+                    const isSel = selected === item.id;
                     return (
                       <button
-                        key={item.phone_e164}
+                        key={item.id}
                         type="button"
-                        onClick={() => setSelected(item)}
+                        onClick={() => setSelected(item.id)}
                         style={{
                           display: "flex",
                           alignItems: "center",
@@ -831,34 +748,16 @@ function ProvisionWizard({
                         <Phone size={13} style={{ color: isSel ? "var(--z-cyan)" : "var(--text-3)" }} />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-jetbrains-mono)" }}>
-                            +{item.phone_e164}
+                            {label(item)}
                           </div>
-                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-                            {item.region || item.country}
-                          </div>
+                          {item.label && (
+                            <div style={{ fontSize: 11, color: "var(--text-3)" }}>{item.label}</div>
+                          )}
                         </div>
                         {isSel && <CheckCircle2 size={14} style={{ color: "var(--z-cyan)" }} />}
                       </button>
                     );
                   })}
-                </div>
-              )}
-
-              {selected && (
-                <div style={{ marginTop: 14 }}>
-                  <Field label="Celular de reenvío (para el código por voz · opcional)">
-                    <input
-                      type="tel"
-                      value={forwardToPhone}
-                      onChange={(e) => setForwardToPhone(e.target.value)}
-                      placeholder="+13526021604"
-                      style={inputStyle}
-                    />
-                  </Field>
-                  <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 8, lineHeight: 1.5 }}>
-                    No se cobra nada: el número queda asignado al negocio. Después
-                    lo conectás a Meta vos mismo (OTP por voz a este celular).
-                  </div>
                 </div>
               )}
             </>
@@ -876,21 +775,21 @@ function ProvisionWizard({
               background: "rgba(0,0,0,0.15)",
             }}
           >
-            <button type="button" onClick={onClose} disabled={provisionMut.isPending} style={ghostBtn}>
+            <button type="button" onClick={onClose} disabled={assignMut.isPending} style={ghostBtn}>
               Cancelar
             </button>
             <button
               type="button"
-              onClick={() => provisionMut.mutate()}
-              disabled={!selected || provisionMut.isPending}
+              onClick={() => assignMut.mutate()}
+              disabled={!selected || assignMut.isPending}
               style={{ ...primaryBtn, opacity: !selected ? 0.5 : 1 }}
             >
-              {provisionMut.isPending ? (
+              {assignMut.isPending ? (
                 <Loader2 size={13} style={{ animation: "spin 900ms linear infinite" }} />
               ) : (
                 <CheckCircle2 size={13} />
               )}
-              {selected ? `Provisionar +${selected.phone_e164}` : "Provisionar"}
+              Asignar
             </button>
           </div>
         )}
@@ -1655,10 +1554,4 @@ const errorStyle: React.CSSProperties = {
   color: "var(--z-red)",
   fontSize: 12.5,
   marginBottom: 12,
-};
-
-const linkStyle: React.CSSProperties = {
-  color: "var(--z-cyan)",
-  textDecoration: "underline",
-  textUnderlineOffset: 2,
 };
