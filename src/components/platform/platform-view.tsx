@@ -44,6 +44,7 @@ import {
 } from "@/lib/api/numbers";
 import { ApiError } from "@/lib/api/client";
 import { TelnyxBalanceCard } from "@/components/platform/telnyx-balance-card";
+import { NumberPoolSection } from "@/components/platform/number-pool-section";
 import type { AvailableNumber, TenantNumber } from "@/lib/api/contract";
 
 // Celular del dueño para recibir la llamada de verificación de Meta (por voz).
@@ -133,6 +134,9 @@ function PlatformControl() {
     >
       {/* Saldo del proveedor de números (Telnyx) — siempre visible */}
       <TelnyxBalanceCard />
+
+      {/* Pool de números llave-en-mano */}
+      <NumberPoolSection />
 
       {/* Celular del dueño para verificación de Meta */}
       <div

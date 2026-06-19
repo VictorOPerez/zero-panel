@@ -171,6 +171,65 @@ export function updateWaProfile(
   );
 }
 
+// ── POOL de números llave-en-mano (super_admin) ───────────────────────────
+// Viktor pre-habilita un número en WhatsApp Cloud (corre el Embedded Signup una
+// vez bajo la infra de NavApex) y lo deja en el pool; el bot de onboarding lo
+// asigna al cliente nuevo. Acá sólo lo agrega/lista/retira manualmente.
+
+export interface PoolNumber {
+  id: string;
+  phone_number_id: string;
+  waba_id: string | null;
+  whatsapp_number: string | null;
+  status: "available" | "reserved" | "assigned" | "retired";
+  reserved_until: string | null;
+  assigned_tenant_id: string | null;
+  assigned_at: string | null;
+  label: string | null;
+  created_at: string;
+}
+
+export async function listNumberPool(): Promise<PoolNumber[]> {
+  const res = await api.get<{ ok: true; numbers: PoolNumber[] }>(
+    "/api/admin/platform/number-pool"
+  );
+  return res.numbers ?? [];
+}
+
+// Agrega un número al pool a partir del `code` del Embedded Signup que el dueño
+// completó. Reusa el mismo flujo Meta que el onboard de un tenant.
+export async function addNumberToPool(body: {
+  code: string;
+  phone_number_id: string;
+  waba_id?: string;
+  business_id?: string;
+  label?: string;
+}): Promise<PoolNumber> {
+  const res = await api.post<{ number: PoolNumber }>(
+    "/api/admin/platform/number-pool",
+    body
+  );
+  return res.number;
+}
+
+export async function retirePoolNumber(id: string): Promise<PoolNumber> {
+  const res = await api.delete<{ number: PoolNumber }>(
+    `/api/admin/platform/number-pool/${encodeURIComponent(id)}`
+  );
+  return res.number;
+}
+
+export async function assignPoolNumber(
+  id: string,
+  tenantId: string
+): Promise<PoolNumber> {
+  const res = await api.post<{ number: PoolNumber }>(
+    `/api/admin/platform/number-pool/${encodeURIComponent(id)}/assign`,
+    { tenant_id: tenantId }
+  );
+  return res.number;
+}
+
 // Provisiona un número y lo asigna al tenant SIN crear cobro de Stripe. El dueño
 // lo conecta a Meta él mismo (OTP por voz) y se lo entrega listo al cliente.
 export async function adminProvisionNumber(
