@@ -44,17 +44,24 @@ interface CalendarEventsResponse {
 }
 
 /**
- * Lee los eventos activos del tenant desde el cache de Google Calendar
- * mantenido por el backend. Por diseño sólo devuelve eventos que terminan
- * en el futuro y no están cancelados.
+ * Lee los eventos del tenant desde el cache de calendario del backend. Por
+ * defecto sólo devuelve eventos que terminan en el futuro y no están cancelados
+ * (vista "Reservas"). Con `includePast` respeta el rango [from, to] exacto
+ * incluyendo días pasados — lo necesita la vista /calendar tipo Google Calendar.
  */
 export async function listUpcomingCalendarEvents(
   tenantId: string,
-  range: { from?: string; to?: string } = {}
+  range: { from?: string; to?: string; includePast?: boolean } = {}
 ): Promise<CalendarEventsResponse> {
   return api.get<CalendarEventsResponse>(
     `/api/admin/tenants/${encodeURIComponent(tenantId)}/calendar/events`,
-    { query: { from: range.from, to: range.to } }
+    {
+      query: {
+        from: range.from,
+        to: range.to,
+        include_past: range.includePast ? "true" : undefined,
+      },
+    }
   );
 }
 

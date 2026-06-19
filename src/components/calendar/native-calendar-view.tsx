@@ -61,7 +61,9 @@ function Calendar({ tenantId }: { tenantId: string }) {
 
   const eventsQuery = useQuery({
     queryKey: ["calendar-events", tenantId, from, to],
-    queryFn: () => listUpcomingCalendarEvents(tenantId, { from, to }),
+    // includePast: la vista navega a semanas/meses arbitrarios → necesita el
+    // histórico exacto del rango, no sólo lo futuro.
+    queryFn: () => listUpcomingCalendarEvents(tenantId, { from, to, includePast: true }),
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });
@@ -74,6 +76,13 @@ function Calendar({ tenantId }: { tenantId: string }) {
       if (view === "month") return addMonths(a, dir);
       return addDays(a, dir * (view === "week" ? 7 : 1));
     });
+  // Navegar a la vista Día de una fecha (click en un día del Mes o en el
+  // encabezado de un día de la Semana). NO abre el modal de crear — fue una
+  // queja real: "le doy a un día y se me abre crear reserva".
+  const goToDay = (date: Date) => {
+    setAnchor(startOfDay(date));
+    setView("day");
+  };
 
   return (
     <PageShell
@@ -145,7 +154,7 @@ function Calendar({ tenantId }: { tenantId: string }) {
           anchor={anchor}
           now={now}
           events={events}
-          onDayClick={(key) => setEditor({ mode: "create", date: key })}
+          onDayClick={(date) => goToDay(date)}
           onEventClick={(ev) => setEditor({ mode: "edit", event: ev })}
         />
       ) : (
@@ -154,10 +163,12 @@ function Calendar({ tenantId }: { tenantId: string }) {
           now={now}
           events={events}
           loading={eventsQuery.isLoading}
+          singleDay={view === "day"}
           onSlotClick={(key, time) =>
             setEditor({ mode: "create", date: key, time })
           }
           onEventClick={(ev) => setEditor({ mode: "edit", event: ev })}
+          onDayHeaderClick={(date) => goToDay(date)}
         />
       )}
 
@@ -175,72 +186,143 @@ function TimeGrid({
   now,
   events,
   loading,
+  singleDay,
   onSlotClick,
   onEventClick,
+  onDayHeaderClick,
 }: {
   days: Date[];
   now: Date;
   events: CalendarLiveEvent[];
   loading: boolean;
+  singleDay: boolean;
   onSlotClick: (dayKey: string, time: string) => void;
   onEventClick: (ev: CalendarLiveEvent) => void;
+  onDayHeaderClick: (date: Date) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const todayKey = localDayKey(now);
 
-  // Al montar (o cambiar de día/semana), desplazar a ~7:00 (como Google).
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 7 * HOUR_HEIGHT - 12;
-  }, []);
+  // Separar timed vs all-day. Los all-day (o sin hora) van a una banda arriba;
+  // si se mezclaran en la grilla se verían como un bloque de día completo.
+  const { timedByDay, allDayByDay, hasAllDay } = useMemo(
+    () => splitEvents(events),
+    [events]
+  );
 
-  const byDay = useMemo(() => groupByLocalDay(events), [events]);
+  // Al montar (o cambiar la cantidad de días: día↔semana), desplazar a ~7:00.
+  // Medimos el offset real del cuerpo para saltar el header sticky con exactitud.
+  useEffect(() => {
+    if (scrollRef.current && bodyRef.current) {
+      scrollRef.current.scrollTop = bodyRef.current.offsetTop + 7 * HOUR_HEIGHT - 12;
+    }
+  }, [days.length, hasAllDay]);
+
   const cols = `${GUTTER}px repeat(${days.length}, minmax(0, 1fr))`;
 
   return (
     <div className="glass" style={{ borderRadius: 12, overflow: "hidden" }}>
-      {/* Cabecera de días (sticky) */}
-      <div style={{ display: "grid", gridTemplateColumns: cols, borderBottom: "1px solid var(--hair)" }}>
-        <div style={{ borderRight: "1px solid var(--hair)" }} />
-        {days.map((d) => {
-          const isToday = localDayKey(d) === todayKey;
-          return (
-            <div key={d.toISOString()} style={dayHeadCell}>
-              <span
-                style={{
-                  fontSize: 10,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  color: isToday ? "var(--z-cyan)" : "var(--text-3)",
-                  fontWeight: 600,
-                }}
-              >
-                {d.toLocaleDateString(undefined, { weekday: "short" })}
-              </span>
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  minWidth: 28,
-                  height: 28,
-                  borderRadius: 999,
-                  fontSize: 15,
-                  fontWeight: 600,
-                  fontFamily: "var(--font-jetbrains-mono)",
-                  color: isToday ? "#0a0a0f" : "var(--text-1)",
-                  background: isToday ? "var(--aurora)" : "transparent",
-                }}
-              >
-                {d.getDate()}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+      <div
+        ref={scrollRef}
+        style={{
+          maxHeight: "calc(100vh - 290px)",
+          minHeight: 440,
+          overflowY: "auto",
+          position: "relative",
+        }}
+      >
+        {/* Header sticky (días + banda todo-el-día). Dentro del scroll → alinea
+            perfecto con el cuerpo sin importar el ancho del scrollbar. */}
+        <div style={{ position: "sticky", top: 0, zIndex: 6, background: "var(--bg-1)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: cols, borderBottom: "1px solid var(--hair)" }}>
+            <div style={{ borderRight: "1px solid var(--hair)" }} />
+            {days.map((d) => {
+              const isToday = localDayKey(d) === todayKey;
+              return (
+                <button
+                  key={d.toISOString()}
+                  type="button"
+                  onClick={() => onDayHeaderClick(d)}
+                  title={singleDay ? undefined : "Ver este día"}
+                  style={{ ...dayHeadCell, cursor: singleDay ? "default" : "pointer" }}
+                >
+                  <span
+                    style={{
+                      fontSize: 10,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      color: isToday ? "var(--z-cyan)" : "var(--text-3)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {d.toLocaleDateString(undefined, { weekday: "short" })}
+                  </span>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minWidth: 28,
+                      height: 28,
+                      borderRadius: 999,
+                      fontSize: 15,
+                      fontWeight: 600,
+                      fontFamily: "var(--font-jetbrains-mono)",
+                      color: isToday ? "#0a0a0f" : "var(--text-1)",
+                      background: isToday ? "var(--aurora)" : "transparent",
+                    }}
+                  >
+                    {d.getDate()}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-      {/* Cuerpo scrolleable */}
-      <div ref={scrollRef} style={{ maxHeight: "calc(100vh - 300px)", minHeight: 420, overflowY: "auto" }}>
-        <div style={{ display: "grid", gridTemplateColumns: cols, position: "relative" }}>
+          {/* Banda "todo el día" — sólo si hay alguno en los días visibles */}
+          {hasAllDay && (
+            <div style={{ display: "grid", gridTemplateColumns: cols, borderBottom: "1px solid var(--hair)" }}>
+              <div
+                style={{
+                  borderRight: "1px solid var(--hair)",
+                  fontSize: 9,
+                  color: "var(--text-3)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  padding: "6px 6px 0",
+                  textAlign: "right",
+                }}
+              >
+                Todo el día
+              </div>
+              {days.map((day) => {
+                const key = localDayKey(day);
+                const list = allDayByDay.get(key) ?? [];
+                return (
+                  <div
+                    key={key}
+                    style={{
+                      borderRight: "1px solid var(--hair)",
+                      padding: 4,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 3,
+                      minHeight: 26,
+                    }}
+                  >
+                    {list.map((ev) => (
+                      <AllDayChip key={ev.id} event={ev} onClick={() => onEventClick(ev)} />
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Cuerpo: gutter de horas + columnas por día */}
+        <div ref={bodyRef} style={{ display: "grid", gridTemplateColumns: cols, position: "relative" }}>
           {/* Gutter de horas */}
           <div style={{ position: "relative", height: DAY_MINUTES * PX_PER_MIN, borderRight: "1px solid var(--hair)" }}>
             {Array.from({ length: 23 }, (_, i) => i + 1).map((h) => (
@@ -263,7 +345,7 @@ function TimeGrid({
           {/* Columnas por día */}
           {days.map((day) => {
             const key = localDayKey(day);
-            const placed = layoutDayEvents((byDay.get(key) ?? []).filter((e) => e.start_at));
+            const placed = layoutDayEvents(timedByDay.get(key) ?? []);
             const isToday = key === todayKey;
             const nowMin = now.getHours() * 60 + now.getMinutes();
             return (
@@ -284,12 +366,6 @@ function TimeGrid({
                   backgroundImage: hourLinesBg,
                 }}
               >
-                {loading && (
-                  <div style={{ position: "absolute", top: 12, left: 0, right: 0, textAlign: "center" }}>
-                    <Loader2 size={14} style={{ animation: "spin 900ms linear infinite", color: "var(--text-3)" }} />
-                  </div>
-                )}
-
                 {placed.map(({ event, colIndex, cols: n, startMin, endMin }) => (
                   <EventBlock
                     key={event.id}
@@ -312,8 +388,46 @@ function TimeGrid({
             );
           })}
         </div>
+
+        {loading && (
+          <div style={{ position: "absolute", top: 8, left: 0, right: 0, textAlign: "center", zIndex: 7, pointerEvents: "none" }}>
+            <Loader2 size={14} style={{ animation: "spin 900ms linear infinite", color: "var(--text-3)" }} />
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function AllDayChip({ event, onClick }: { event: CalendarLiveEvent; onClick: () => void }) {
+  const isBot = event.source === "bot";
+  const accent = isBot ? "oklch(0.62 0.22 295)" : "oklch(0.80 0.13 200)";
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      title={event.summary || "(sin título)"}
+      style={{
+        textAlign: "left",
+        border: "none",
+        borderLeft: `3px solid ${accent}`,
+        background: isBot ? "oklch(0.62 0.22 295 / 0.18)" : "oklch(0.80 0.13 200 / 0.14)",
+        borderRadius: 4,
+        padding: "2px 6px",
+        fontSize: 10.5,
+        fontWeight: 500,
+        color: "var(--text-0)",
+        cursor: "pointer",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {event.summary || "(sin título)"}
+    </button>
   );
 }
 
@@ -406,7 +520,7 @@ function MonthGrid({
   anchor: Date;
   now: Date;
   events: CalendarLiveEvent[];
-  onDayClick: (dayKey: string) => void;
+  onDayClick: (date: Date) => void;
   onEventClick: (ev: CalendarLiveEvent) => void;
 }) {
   const cells = useMemo(() => monthCells(anchor), [anchor]);
@@ -445,7 +559,7 @@ function MonthGrid({
             <div
               key={key}
               onClick={(e) => {
-                if (e.target === e.currentTarget) onDayClick(key);
+                if (e.target === e.currentTarget) onDayClick(d);
               }}
               style={{
                 minHeight: 104,
@@ -785,13 +899,18 @@ function layoutDayEvents(events: CalendarLiveEvent[]): PlacedEvent[] {
   const items = events
     .map((event) => {
       const s = new Date(event.start_at as string);
-      const e = event.end_at ? new Date(event.end_at) : new Date(s.getTime() + 30 * 60000);
+      if (Number.isNaN(s.getTime())) return null;
+      let e = event.end_at ? new Date(event.end_at) : new Date(s.getTime() + 30 * 60000);
+      if (Number.isNaN(e.getTime())) e = new Date(s.getTime() + 30 * 60000);
       const startMin = Math.max(0, s.getHours() * 60 + s.getMinutes());
       let endMin = e.getHours() * 60 + e.getMinutes();
-      // Si termina en otro día o es <= start, lo clampeamos.
-      if (e.getDate() !== s.getDate() || endMin <= startMin) endMin = DAY_MINUTES;
+      // Si termina en otro día (o después) o es <= start, clampeamos a medianoche.
+      if (e.getTime() - s.getTime() >= DAY_MINUTES * 60000 || e.getDate() !== s.getDate() || endMin <= startMin) {
+        endMin = DAY_MINUTES;
+      }
       return { event, startMin, endMin };
     })
+    .filter((x): x is { event: CalendarLiveEvent; startMin: number; endMin: number } => x !== null)
     .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
 
   const result: PlacedEvent[] = [];
@@ -945,12 +1064,44 @@ function groupByLocalDay(events: CalendarLiveEvent[]): Map<string, CalendarLiveE
   const map = new Map<string, CalendarLiveEvent[]>();
   for (const ev of events) {
     if (!ev.start_at) continue;
-    const key = localDayKey(new Date(ev.start_at));
+    const d = new Date(ev.start_at);
+    if (Number.isNaN(d.getTime())) continue;
+    const key = localDayKey(d);
     const arr = map.get(key);
     if (arr) arr.push(ev);
     else map.set(key, [ev]);
   }
   return map;
+}
+
+// Separa eventos con hora (van a la grilla de tiempo) de los de día completo
+// (van a la banda superior). Descarta fechas inválidas. Agrupa por día local.
+function splitEvents(events: CalendarLiveEvent[]): {
+  timedByDay: Map<string, CalendarLiveEvent[]>;
+  allDayByDay: Map<string, CalendarLiveEvent[]>;
+  hasAllDay: boolean;
+} {
+  const timedByDay = new Map<string, CalendarLiveEvent[]>();
+  const allDayByDay = new Map<string, CalendarLiveEvent[]>();
+  let hasAllDay = false;
+  const push = (m: Map<string, CalendarLiveEvent[]>, k: string, ev: CalendarLiveEvent) => {
+    const arr = m.get(k);
+    if (arr) arr.push(ev);
+    else m.set(k, [ev]);
+  };
+  for (const ev of events) {
+    if (!ev.start_at) continue;
+    const d = new Date(ev.start_at);
+    if (Number.isNaN(d.getTime())) continue;
+    const key = localDayKey(d);
+    if (ev.is_all_day) {
+      hasAllDay = true;
+      push(allDayByDay, key, ev);
+    } else {
+      push(timedByDay, key, ev);
+    }
+  }
+  return { timedByDay, allDayByDay, hasAllDay };
 }
 
 // ── Estilos ──────────────────────────────────────────────────────────────────
@@ -978,7 +1129,12 @@ const dayHeadCell: React.CSSProperties = {
   flexDirection: "column",
   alignItems: "center",
   gap: 3,
+  border: "none",
   borderRight: "1px solid var(--hair)",
+  background: "transparent",
+  color: "var(--text-1)",
+  width: "100%",
+  fontFamily: "inherit",
 };
 
 const segActive: React.CSSProperties = {
