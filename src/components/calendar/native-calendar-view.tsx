@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarPlus,
@@ -11,7 +11,6 @@ import {
   RefreshCw,
   Sparkles,
   Trash2,
-  User,
   X,
 } from "lucide-react";
 import {
@@ -25,19 +24,40 @@ import { PageShell } from "@/components/panel/page-shell";
 import { RequireTenant } from "@/components/panel/require-tenant";
 import type { CalendarLiveEvent } from "@/lib/api/contract";
 
+// ── Constantes de layout (grilla de tiempo estilo Google Calendar) ──────────
+const HOUR_HEIGHT = 48; // px por hora
+const PX_PER_MIN = HOUR_HEIGHT / 60;
+const DAY_MINUTES = 24 * 60;
+const GUTTER = 56; // ancho de la columna de horas
+const SNAP_MIN = 15; // al hacer click, redondea a 15 min
+
+type ViewMode = "day" | "week" | "month";
+
+type Editor =
+  | { mode: "create"; date: string; time?: string; duration?: number }
+  | { mode: "edit"; event: CalendarLiveEvent };
+
 export function NativeCalendarView() {
   return <RequireTenant>{(tenantId) => <Calendar tenantId={tenantId} />}</RequireTenant>;
 }
 
 function Calendar({ tenantId }: { tenantId: string }) {
-  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
-  // Modal de crear/editar. event=null → crear; event=evento → editar.
-  const [editor, setEditor] = useState<
-    { mode: "create"; date: string } | { mode: "edit"; event: CalendarLiveEvent } | null
-  >(null);
+  const [view, setView] = useState<ViewMode>("week");
+  const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
+  const [editor, setEditor] = useState<Editor | null>(null);
+  // Reloj para mover la línea de "ahora" y recalcular el día actual.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
-  const weekEnd = addDays(weekStart, 7);
-  const { from, to } = { from: weekStart.toISOString(), to: weekEnd.toISOString() };
+  // Rango visible según la vista (la query lo usa como ventana).
+  const range = useMemo(() => rangeFor(view, anchor), [view, anchor]);
+  const { from, to } = {
+    from: range.start.toISOString(),
+    to: range.end.toISOString(),
+  };
 
   const eventsQuery = useQuery({
     queryKey: ["calendar-events", tenantId, from, to],
@@ -47,78 +67,70 @@ function Calendar({ tenantId }: { tenantId: string }) {
   });
 
   const events = useMemo(() => eventsQuery.data?.events ?? [], [eventsQuery.data]);
-  const byDay = useMemo(() => groupByLocalDay(events), [events]);
-  const days = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
-    [weekStart]
-  );
 
-  const todayKey = localDayKey(new Date());
+  const goToday = () => setAnchor(startOfDay(new Date()));
+  const step = (dir: 1 | -1) =>
+    setAnchor((a) => {
+      if (view === "month") return addMonths(a, dir);
+      return addDays(a, dir * (view === "week" ? 7 : 1));
+    });
 
   return (
     <PageShell
       title="Calendario"
       subtitle="Los turnos que toma el bot y los que agregás a mano. Reservás sin conectar Google."
       actions={
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             type="button"
             onClick={() => eventsQuery.refetch()}
             disabled={eventsQuery.isFetching}
             style={secondaryBtn}
+            title="Refrescar"
           >
             {eventsQuery.isFetching ? (
               <Loader2 size={12} style={{ animation: "spin 900ms linear infinite" }} />
             ) : (
               <RefreshCw size={12} />
             )}
-            Refrescar
           </button>
           <button
             type="button"
-            onClick={() => setEditor({ mode: "create", date: localDayKey(new Date()) })}
+            onClick={() => setEditor({ mode: "create", date: localDayKey(anchor) })}
             style={primaryBtn}
           >
             <CalendarPlus size={13} />
-            Nueva reserva
+            Crear
           </button>
         </div>
       }
     >
-      {/* Navegación de semana */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          marginBottom: 14,
-        }}
-      >
-        <button
-          type="button"
-          aria-label="Semana anterior"
-          onClick={() => setWeekStart((w) => addDays(w, -7))}
-          style={navBtn}
-        >
-          <ChevronLeft size={15} />
-        </button>
-        <button
-          type="button"
-          onClick={() => setWeekStart(mondayOf(new Date()))}
-          style={{ ...secondaryBtn, padding: "7px 12px" }}
-        >
+      {/* Toolbar: hoy / ‹ › / título / Día-Semana-Mes */}
+      <div style={toolbar}>
+        <button type="button" onClick={goToday} style={{ ...secondaryBtn, padding: "7px 14px" }}>
           Hoy
         </button>
-        <button
-          type="button"
-          aria-label="Semana siguiente"
-          onClick={() => setWeekStart((w) => addDays(w, 7))}
-          style={navBtn}
-        >
-          <ChevronRight size={15} />
-        </button>
-        <div style={{ marginLeft: 6, fontSize: 13, fontWeight: 600, color: "var(--text-0)" }}>
-          {weekRangeLabel(weekStart)}
+        <div style={{ display: "flex", gap: 2 }}>
+          <button type="button" aria-label="Anterior" onClick={() => step(-1)} style={navBtn}>
+            <ChevronLeft size={16} />
+          </button>
+          <button type="button" aria-label="Siguiente" onClick={() => step(1)} style={navBtn}>
+            <ChevronRight size={16} />
+          </button>
+        </div>
+        <div style={titleLabel}>{titleFor(view, anchor)}</div>
+
+        <div className="filter-tabs" style={{ marginLeft: "auto" }}>
+          {(["day", "week", "month"] as ViewMode[]).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              style={view === v ? segActive : segIdle}
+            >
+              {v === "day" ? "Día" : v === "week" ? "Semana" : "Mes"}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -128,216 +140,398 @@ function Calendar({ tenantId }: { tenantId: string }) {
         </div>
       )}
 
-      {/* Grilla semanal: 7 columnas con scroll horizontal en pantallas chicas */}
-      <div style={{ overflowX: "auto", paddingBottom: 4 }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(7, minmax(150px, 1fr))",
-            gap: 8,
-            minWidth: 760,
-          }}
-        >
-          {days.map((day) => {
-            const key = localDayKey(day);
-            const dayEvents = (byDay.get(key) ?? []).sort(sortByStart);
-            const isToday = key === todayKey;
-            return (
-              <DayColumn
-                key={key}
-                day={day}
-                isToday={isToday}
-                events={dayEvents}
-                onAdd={() => setEditor({ mode: "create", date: key })}
-                onPick={(ev) => setEditor({ mode: "edit", event: ev })}
-                loading={eventsQuery.isLoading}
-              />
-            );
-          })}
-        </div>
-      </div>
+      {view === "month" ? (
+        <MonthGrid
+          anchor={anchor}
+          now={now}
+          events={events}
+          onDayClick={(key) => setEditor({ mode: "create", date: key })}
+          onEventClick={(ev) => setEditor({ mode: "edit", event: ev })}
+        />
+      ) : (
+        <TimeGrid
+          days={view === "week" ? weekDays(anchor) : [anchor]}
+          now={now}
+          events={events}
+          loading={eventsQuery.isLoading}
+          onSlotClick={(key, time) =>
+            setEditor({ mode: "create", date: key, time })
+          }
+          onEventClick={(ev) => setEditor({ mode: "edit", event: ev })}
+        />
+      )}
 
       {editor && (
-        <AppointmentModal
-          tenantId={tenantId}
-          editor={editor}
-          onClose={() => setEditor(null)}
-        />
+        <AppointmentModal tenantId={tenantId} editor={editor} onClose={() => setEditor(null)} />
       )}
     </PageShell>
   );
 }
 
-function DayColumn({
-  day,
-  isToday,
+// ── Vista de tiempo (Día / Semana): eje de horas × columnas de días ─────────
+
+function TimeGrid({
+  days,
+  now,
   events,
-  onAdd,
-  onPick,
   loading,
+  onSlotClick,
+  onEventClick,
 }: {
-  day: Date;
-  isToday: boolean;
+  days: Date[];
+  now: Date;
   events: CalendarLiveEvent[];
-  onAdd: () => void;
-  onPick: (ev: CalendarLiveEvent) => void;
   loading: boolean;
+  onSlotClick: (dayKey: string, time: string) => void;
+  onEventClick: (ev: CalendarLiveEvent) => void;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const todayKey = localDayKey(now);
+
+  // Al montar (o cambiar de día/semana), desplazar a ~7:00 (como Google).
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 7 * HOUR_HEIGHT - 12;
+  }, []);
+
+  const byDay = useMemo(() => groupByLocalDay(events), [events]);
+  const cols = `${GUTTER}px repeat(${days.length}, minmax(0, 1fr))`;
+
   return (
-    <div
-      className="glass"
-      style={{
-        borderRadius: 10,
-        display: "flex",
-        flexDirection: "column",
-        minHeight: 220,
-        borderColor: isToday ? "oklch(0.62 0.22 295 / 0.45)" : undefined,
-      }}
-    >
-      <div
-        style={{
-          padding: "8px 10px",
-          borderBottom: "1px solid var(--hair)",
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 10,
-              textTransform: "uppercase",
-              letterSpacing: "0.1em",
-              color: isToday ? "var(--z-cyan)" : "var(--text-3)",
-              fontWeight: 600,
-            }}
-          >
-            {day.toLocaleDateString(undefined, { weekday: "short" })}
-          </div>
-          <div
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              color: isToday ? "var(--text-0)" : "var(--text-1)",
-              fontFamily: "var(--font-jetbrains-mono)",
-            }}
-          >
-            {day.getDate()}
-          </div>
-        </div>
-        <button
-          type="button"
-          aria-label="Agregar reserva"
-          onClick={onAdd}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 22,
-            height: 22,
-            borderRadius: 5,
-            border: "1px solid var(--hair-strong)",
-            background: "rgba(255,255,255,0.03)",
-            color: "var(--text-2)",
-            cursor: "pointer",
-          }}
-        >
-          <CalendarPlus size={12} />
-        </button>
+    <div className="glass" style={{ borderRadius: 12, overflow: "hidden" }}>
+      {/* Cabecera de días (sticky) */}
+      <div style={{ display: "grid", gridTemplateColumns: cols, borderBottom: "1px solid var(--hair)" }}>
+        <div style={{ borderRight: "1px solid var(--hair)" }} />
+        {days.map((d) => {
+          const isToday = localDayKey(d) === todayKey;
+          return (
+            <div key={d.toISOString()} style={dayHeadCell}>
+              <span
+                style={{
+                  fontSize: 10,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  color: isToday ? "var(--z-cyan)" : "var(--text-3)",
+                  fontWeight: 600,
+                }}
+              >
+                {d.toLocaleDateString(undefined, { weekday: "short" })}
+              </span>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minWidth: 28,
+                  height: 28,
+                  borderRadius: 999,
+                  fontSize: 15,
+                  fontWeight: 600,
+                  fontFamily: "var(--font-jetbrains-mono)",
+                  color: isToday ? "#0a0a0f" : "var(--text-1)",
+                  background: isToday ? "var(--aurora)" : "transparent",
+                }}
+              >
+                {d.getDate()}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
-      <div
-        style={{
-          padding: 6,
-          display: "flex",
-          flexDirection: "column",
-          gap: 5,
-          flex: 1,
-        }}
-      >
-        {loading ? (
-          <div style={{ padding: 10, textAlign: "center", color: "var(--text-3)" }}>
-            <Loader2 size={13} style={{ animation: "spin 900ms linear infinite" }} />
+      {/* Cuerpo scrolleable */}
+      <div ref={scrollRef} style={{ maxHeight: "calc(100vh - 300px)", minHeight: 420, overflowY: "auto" }}>
+        <div style={{ display: "grid", gridTemplateColumns: cols, position: "relative" }}>
+          {/* Gutter de horas */}
+          <div style={{ position: "relative", height: DAY_MINUTES * PX_PER_MIN, borderRight: "1px solid var(--hair)" }}>
+            {Array.from({ length: 23 }, (_, i) => i + 1).map((h) => (
+              <div
+                key={h}
+                style={{
+                  position: "absolute",
+                  top: h * HOUR_HEIGHT - 6,
+                  right: 8,
+                  fontSize: 10,
+                  color: "var(--text-3)",
+                  fontFamily: "var(--font-jetbrains-mono)",
+                }}
+              >
+                {hourLabel(h)}
+              </div>
+            ))}
           </div>
-        ) : events.length === 0 ? (
-          <button
-            type="button"
-            onClick={onAdd}
-            style={{
-              flex: 1,
-              minHeight: 56,
-              border: "1px dashed var(--hair)",
-              borderRadius: 7,
-              background: "transparent",
-              color: "var(--text-3)",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            + Reservar
-          </button>
-        ) : (
-          events.map((ev) => <EventChip key={ev.id} event={ev} onClick={() => onPick(ev)} />)
-        )}
+
+          {/* Columnas por día */}
+          {days.map((day) => {
+            const key = localDayKey(day);
+            const placed = layoutDayEvents((byDay.get(key) ?? []).filter((e) => e.start_at));
+            const isToday = key === todayKey;
+            const nowMin = now.getHours() * 60 + now.getMinutes();
+            return (
+              <div
+                key={key}
+                onClick={(e) => {
+                  if (e.target !== e.currentTarget) return; // sólo el fondo vacío
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const min = clampSnap((e.clientY - rect.top) / PX_PER_MIN);
+                  onSlotClick(key, minToHHMM(min));
+                }}
+                style={{
+                  position: "relative",
+                  height: DAY_MINUTES * PX_PER_MIN,
+                  borderRight: "1px solid var(--hair)",
+                  cursor: "pointer",
+                  background: isToday ? "oklch(0.80 0.13 200 / 0.03)" : undefined,
+                  backgroundImage: hourLinesBg,
+                }}
+              >
+                {loading && (
+                  <div style={{ position: "absolute", top: 12, left: 0, right: 0, textAlign: "center" }}>
+                    <Loader2 size={14} style={{ animation: "spin 900ms linear infinite", color: "var(--text-3)" }} />
+                  </div>
+                )}
+
+                {placed.map(({ event, colIndex, cols: n, startMin, endMin }) => (
+                  <EventBlock
+                    key={event.id}
+                    event={event}
+                    top={startMin * PX_PER_MIN}
+                    height={Math.max((endMin - startMin) * PX_PER_MIN, 18)}
+                    leftPct={(colIndex / n) * 100}
+                    widthPct={(1 / n) * 100}
+                    onClick={() => onEventClick(event)}
+                  />
+                ))}
+
+                {isToday && nowMin >= 0 && nowMin <= DAY_MINUTES && (
+                  <div style={{ position: "absolute", left: 0, right: 0, top: nowMin * PX_PER_MIN, zIndex: 5, pointerEvents: "none" }}>
+                    <div style={{ position: "absolute", left: -4, top: -4, width: 8, height: 8, borderRadius: 999, background: "var(--z-red)" }} />
+                    <div style={{ height: 2, background: "var(--z-red)" }} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 }
 
-function EventChip({ event, onClick }: { event: CalendarLiveEvent; onClick: () => void }) {
-  const start = event.start_at ? new Date(event.start_at) : null;
-  const time = start
-    ? start.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
-    : "—";
+function EventBlock({
+  event,
+  top,
+  height,
+  leftPct,
+  widthPct,
+  onClick,
+}: {
+  event: CalendarLiveEvent;
+  top: number;
+  height: number;
+  leftPct: number;
+  widthPct: number;
+  onClick: () => void;
+}) {
   const isBot = event.source === "bot";
+  const accent = isBot ? "oklch(0.62 0.22 295)" : "oklch(0.80 0.13 200)";
+  const start = event.start_at ? new Date(event.start_at) : null;
+  const compact = height < 34;
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      title={event.summary || "(sin título)"}
       style={{
+        position: "absolute",
+        top,
+        height,
+        left: `calc(${leftPct}% + 2px)`,
+        width: `calc(${widthPct}% - 4px)`,
         textAlign: "left",
-        padding: "7px 8px",
-        borderRadius: 7,
-        border: `1px solid ${isBot ? "oklch(0.62 0.22 295 / 0.3)" : "var(--hair-strong)"}`,
-        background: isBot ? "oklch(0.62 0.22 295 / 0.1)" : "rgba(255,255,255,0.03)",
+        padding: compact ? "1px 6px" : "3px 7px",
+        borderRadius: 6,
+        border: `1px solid ${accent}`,
+        borderLeft: `3px solid ${accent}`,
+        background: isBot
+          ? "oklch(0.62 0.22 295 / 0.20)"
+          : "oklch(0.80 0.13 200 / 0.16)",
+        color: "var(--text-0)",
         cursor: "pointer",
+        overflow: "hidden",
         display: "flex",
-        flexDirection: "column",
-        gap: 2,
-        minWidth: 0,
+        flexDirection: compact ? "row" : "column",
+        gap: compact ? 5 : 1,
+        alignItems: compact ? "center" : "stretch",
+        zIndex: 3,
       }}
     >
-      <div
+      <span
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 5,
           fontSize: 11,
-          fontFamily: "var(--font-jetbrains-mono)",
-          color: isBot ? "var(--z-cyan)" : "var(--text-2)",
           fontWeight: 600,
-        }}
-      >
-        {isBot ? <Sparkles size={9} /> : <User size={9} />}
-        {time}
-      </div>
-      <div
-        style={{
-          fontSize: 12,
           color: "var(--text-0)",
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 3,
+          flexShrink: 0,
         }}
       >
+        {isBot && <Sparkles size={9} style={{ color: accent }} />}
         {event.summary || "(sin título)"}
-      </div>
+      </span>
+      {start && (
+        <span style={{ fontSize: 10, color: "var(--text-2)", fontFamily: "var(--font-jetbrains-mono)" }}>
+          {fmtTime(start)}
+        </span>
+      )}
     </button>
   );
 }
 
-// ── Modal crear / editar ──────────────────────────────────────────────────
+// ── Vista de Mes ────────────────────────────────────────────────────────────
+
+function MonthGrid({
+  anchor,
+  now,
+  events,
+  onDayClick,
+  onEventClick,
+}: {
+  anchor: Date;
+  now: Date;
+  events: CalendarLiveEvent[];
+  onDayClick: (dayKey: string) => void;
+  onEventClick: (ev: CalendarLiveEvent) => void;
+}) {
+  const cells = useMemo(() => monthCells(anchor), [anchor]);
+  const byDay = useMemo(() => groupByLocalDay(events), [events]);
+  const todayKey = localDayKey(now);
+  const month = anchor.getMonth();
+  const weekdays = cells.slice(0, 7);
+
+  return (
+    <div className="glass" style={{ borderRadius: 12, overflow: "hidden" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid var(--hair)" }}>
+        {weekdays.map((d) => (
+          <div
+            key={d.toISOString()}
+            style={{
+              padding: "8px 10px",
+              textAlign: "center",
+              fontSize: 10,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: "var(--text-3)",
+              fontWeight: 600,
+            }}
+          >
+            {d.toLocaleDateString(undefined, { weekday: "short" })}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
+        {cells.map((d, i) => {
+          const key = localDayKey(d);
+          const dayEvents = (byDay.get(key) ?? []).sort(sortByStart);
+          const isToday = key === todayKey;
+          const dim = d.getMonth() !== month;
+          return (
+            <div
+              key={key}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) onDayClick(key);
+              }}
+              style={{
+                minHeight: 104,
+                padding: 6,
+                borderRight: (i + 1) % 7 === 0 ? undefined : "1px solid var(--hair)",
+                borderBottom: i < 35 ? "1px solid var(--hair)" : undefined,
+                background: dim ? "rgba(0,0,0,0.15)" : isToday ? "oklch(0.80 0.13 200 / 0.04)" : undefined,
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                gap: 3,
+              }}
+            >
+              <span
+                style={{
+                  alignSelf: "flex-start",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minWidth: 22,
+                  height: 22,
+                  borderRadius: 999,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  fontFamily: "var(--font-jetbrains-mono)",
+                  color: isToday ? "#0a0a0f" : dim ? "var(--text-3)" : "var(--text-1)",
+                  background: isToday ? "var(--aurora)" : "transparent",
+                  pointerEvents: "none",
+                }}
+              >
+                {d.getDate()}
+              </span>
+              {dayEvents.slice(0, 3).map((ev) => {
+                const isBot = ev.source === "bot";
+                const accent = isBot ? "oklch(0.62 0.22 295)" : "oklch(0.80 0.13 200)";
+                return (
+                  <button
+                    key={ev.id}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEventClick(ev);
+                    }}
+                    style={{
+                      textAlign: "left",
+                      border: "none",
+                      borderLeft: `3px solid ${accent}`,
+                      background: isBot ? "oklch(0.62 0.22 295 / 0.16)" : "oklch(0.80 0.13 200 / 0.14)",
+                      borderRadius: 4,
+                      padding: "2px 5px",
+                      fontSize: 10.5,
+                      color: "var(--text-0)",
+                      cursor: "pointer",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      display: "flex",
+                      gap: 4,
+                      alignItems: "center",
+                    }}
+                  >
+                    {ev.start_at && (
+                      <span style={{ fontFamily: "var(--font-jetbrains-mono)", color: "var(--text-2)", flexShrink: 0 }}>
+                        {fmtTime(new Date(ev.start_at))}
+                      </span>
+                    )}
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {ev.summary || "(sin título)"}
+                    </span>
+                  </button>
+                );
+              })}
+              {dayEvents.length > 3 && (
+                <span style={{ fontSize: 10, color: "var(--text-3)", paddingLeft: 4 }}>
+                  +{dayEvents.length - 3} más
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Modal crear / editar ────────────────────────────────────────────────────
 
 function AppointmentModal({
   tenantId,
@@ -345,7 +539,7 @@ function AppointmentModal({
   onClose,
 }: {
   tenantId: string;
-  editor: { mode: "create"; date: string } | { mode: "edit"; event: CalendarLiveEvent };
+  editor: Editor;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
@@ -365,8 +559,8 @@ function AppointmentModal({
     }
     return {
       date: editor.mode === "create" ? editor.date : localDayKey(new Date()),
-      time: "09:00",
-      duration: 30,
+      time: editor.mode === "create" && editor.time ? editor.time : "09:00",
+      duration: editor.mode === "create" && editor.duration ? editor.duration : 30,
       title: "",
     };
   }, [existing, editor]);
@@ -423,8 +617,7 @@ function AppointmentModal({
   });
 
   const cancel = useMutation({
-    mutationFn: () =>
-      cancelAppointment(tenantId, existing!.google_event_id),
+    mutationFn: () => cancelAppointment(tenantId, existing!.google_event_id),
     onSuccess: () => {
       invalidate();
       onClose();
@@ -459,7 +652,7 @@ function AppointmentModal({
         onClick={(e) => e.stopPropagation()}
       >
         <header style={modalHeader}>
-          <CalendarPlus size={16} style={{ color: "var(--text-2)" }} />
+          <CalendarPlus size={16} style={{ color: "var(--z-cyan)" }} />
           <div style={{ fontSize: 14, fontWeight: 600 }}>
             {isEdit ? "Editar reserva" : "Nueva reserva"}
           </div>
@@ -477,20 +670,10 @@ function AppointmentModal({
 
           <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr", gap: 10 }}>
             <Field label="Fecha">
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                style={inputStyle}
-              />
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
             </Field>
             <Field label="Hora">
-              <input
-                type="time"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                style={inputStyle}
-              />
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={inputStyle} />
             </Field>
             <Field label="Duración (min)">
               <input
@@ -588,21 +771,132 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+// ── Layout de eventos solapados (packing en columnas) ───────────────────────
+
+interface PlacedEvent {
+  event: CalendarLiveEvent;
+  colIndex: number;
+  cols: number;
+  startMin: number;
+  endMin: number;
+}
+
+function layoutDayEvents(events: CalendarLiveEvent[]): PlacedEvent[] {
+  const items = events
+    .map((event) => {
+      const s = new Date(event.start_at as string);
+      const e = event.end_at ? new Date(event.end_at) : new Date(s.getTime() + 30 * 60000);
+      const startMin = Math.max(0, s.getHours() * 60 + s.getMinutes());
+      let endMin = e.getHours() * 60 + e.getMinutes();
+      // Si termina en otro día o es <= start, lo clampeamos.
+      if (e.getDate() !== s.getDate() || endMin <= startMin) endMin = DAY_MINUTES;
+      return { event, startMin, endMin };
+    })
+    .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+
+  const result: PlacedEvent[] = [];
+  let cluster: typeof items = [];
+  let clusterEnd = -1;
+
+  const flush = () => {
+    const colEnds: number[] = [];
+    const placed = cluster.map((it) => {
+      let col = colEnds.findIndex((end) => end <= it.startMin);
+      if (col === -1) {
+        col = colEnds.length;
+        colEnds.push(it.endMin);
+      } else {
+        colEnds[col] = it.endMin;
+      }
+      return { ...it, col };
+    });
+    const n = colEnds.length;
+    for (const p of placed) {
+      result.push({ event: p.event, colIndex: p.col, cols: n, startMin: p.startMin, endMin: p.endMin });
+    }
+    cluster = [];
+    clusterEnd = -1;
+  };
+
+  for (const it of items) {
+    if (cluster.length && it.startMin >= clusterEnd) flush();
+    cluster.push(it);
+    clusterEnd = Math.max(clusterEnd, it.endMin);
+  }
+  if (cluster.length) flush();
+  return result;
+}
+
 // ── Helpers de fecha ───────────────────────────────────────────────────────
 
-function mondayOf(d: Date): Date {
+function startOfDay(d: Date): Date {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function mondayOf(d: Date): Date {
+  const x = startOfDay(d);
   const day = x.getDay(); // 0=dom..6=sab
-  const diff = day === 0 ? -6 : 1 - day; // lunes como inicio
+  const diff = day === 0 ? -6 : 1 - day;
   x.setDate(x.getDate() + diff);
   return x;
+}
+
+function weekDays(anchor: Date): Date[] {
+  const start = mondayOf(anchor);
+  return Array.from({ length: 7 }, (_, i) => addDays(start, i));
 }
 
 function addDays(d: Date, n: number): Date {
   const x = new Date(d);
   x.setDate(x.getDate() + n);
   return x;
+}
+
+function addMonths(d: Date, n: number): Date {
+  const x = new Date(d);
+  x.setMonth(x.getMonth() + n);
+  return x;
+}
+
+function monthCells(anchor: Date): Date[] {
+  const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+  const start = mondayOf(first);
+  return Array.from({ length: 42 }, (_, i) => addDays(start, i));
+}
+
+function rangeFor(view: ViewMode, anchor: Date): { start: Date; end: Date } {
+  if (view === "day") return { start: startOfDay(anchor), end: addDays(startOfDay(anchor), 1) };
+  if (view === "week") {
+    const start = mondayOf(anchor);
+    return { start, end: addDays(start, 7) };
+  }
+  const cells = monthCells(anchor);
+  return { start: cells[0], end: addDays(cells[41], 1) };
+}
+
+function titleFor(view: ViewMode, anchor: Date): string {
+  if (view === "day") {
+    return anchor.toLocaleDateString(undefined, {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  }
+  if (view === "month") {
+    return anchor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  }
+  const start = mondayOf(anchor);
+  const end = addDays(start, 6);
+  const sameMonth = start.getMonth() === end.getMonth();
+  const startLabel = start.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: sameMonth ? undefined : "short",
+  });
+  const endLabel = end.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  return `${startLabel} – ${endLabel}`;
 }
 
 function localDayKey(d: Date): string {
@@ -616,25 +910,31 @@ function hhmm(d: Date): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+function fmtTime(d: Date): string {
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+function hourLabel(h: number): string {
+  const d = new Date();
+  d.setHours(h, 0, 0, 0);
+  return d.toLocaleTimeString(undefined, { hour: "numeric" });
+}
+
+function clampSnap(minutes: number): number {
+  const snapped = Math.round(minutes / SNAP_MIN) * SNAP_MIN;
+  return Math.max(0, Math.min(DAY_MINUTES - SNAP_MIN, snapped));
+}
+
+function minToHHMM(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 function toIso(dateStr: string, timeStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number);
   const [hh, mm] = timeStr.split(":").map(Number);
   return new Date(y, (m ?? 1) - 1, d ?? 1, hh ?? 0, mm ?? 0, 0, 0).toISOString();
-}
-
-function weekRangeLabel(weekStart: Date): string {
-  const end = addDays(weekStart, 6);
-  const sameMonth = weekStart.getMonth() === end.getMonth();
-  const startLabel = weekStart.toLocaleDateString(undefined, {
-    day: "numeric",
-    month: sameMonth ? undefined : "short",
-  });
-  const endLabel = end.toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-  return `${startLabel} – ${endLabel}`;
 }
 
 function sortByStart(a: CalendarLiveEvent, b: CalendarLiveEvent): number {
@@ -653,7 +953,55 @@ function groupByLocalDay(events: CalendarLiveEvent[]): Map<string, CalendarLiveE
   return map;
 }
 
-// ── Estilos ────────────────────────────────────────────────────────────────
+// ── Estilos ──────────────────────────────────────────────────────────────────
+
+const hourLinesBg = `repeating-linear-gradient(to bottom, transparent, transparent ${HOUR_HEIGHT - 1}px, var(--hair) ${HOUR_HEIGHT - 1}px, var(--hair) ${HOUR_HEIGHT}px)`;
+
+const toolbar: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  marginBottom: 14,
+  flexWrap: "wrap",
+};
+
+const titleLabel: React.CSSProperties = {
+  fontSize: 14,
+  fontWeight: 600,
+  color: "var(--text-0)",
+  textTransform: "capitalize",
+};
+
+const dayHeadCell: React.CSSProperties = {
+  padding: "8px 6px",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 3,
+  borderRight: "1px solid var(--hair)",
+};
+
+const segActive: React.CSSProperties = {
+  padding: "5px 12px",
+  borderRadius: 6,
+  border: "none",
+  background: "var(--aurora)",
+  color: "#0a0a0f",
+  fontSize: 11.5,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const segIdle: React.CSSProperties = {
+  padding: "5px 12px",
+  borderRadius: 6,
+  border: "none",
+  background: "transparent",
+  color: "var(--text-2)",
+  fontSize: 11.5,
+  fontWeight: 500,
+  cursor: "pointer",
+};
 
 const primaryBtn: React.CSSProperties = {
   display: "inline-flex",
@@ -778,4 +1126,5 @@ const errorBanner: React.CSSProperties = {
   background: "oklch(0.68 0.21 25 / 0.08)",
   color: "var(--z-red)",
   fontSize: 12,
+  marginBottom: 4,
 };
