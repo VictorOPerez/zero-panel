@@ -22,6 +22,7 @@ import {
   provisionPoolNumber,
   setPoolForward,
   connectPoolWhatsapp,
+  connectPoolWhatsappManual,
   reclaimPoolNumber,
   type PoolNumber,
   type AvailableToBuy,
@@ -582,7 +583,33 @@ function ConnectModal({
     }
   }
 
-  const working = busy || connectMut.isPending;
+  // Modo manual: el número ya se verificó en Meta a mano → pegar phone_number_id
+  // + token de System User.
+  const [mode, setMode] = useState<"auto" | "manual">("auto");
+  const [m, setM] = useState({ phone_number_id: "", waba_id: "", access_token: "" });
+
+  const manualMut = useMutation({
+    mutationFn: () =>
+      connectPoolWhatsappManual(number.id, {
+        phone_number_id: m.phone_number_id.trim(),
+        access_token: m.access_token.trim(),
+        waba_id: m.waba_id.trim() || undefined,
+      }),
+    onSuccess: () => {
+      setDone(true);
+      onDone();
+    },
+    onError: (err) =>
+      setError(
+        err instanceof ApiError
+          ? typeof err.payload.error === "string"
+            ? err.payload.error
+            : "No pudimos conectar."
+          : "No pudimos conectar."
+      ),
+  });
+
+  const working = busy || connectMut.isPending || manualMut.isPending;
 
   return (
     <ModalShell title="Conectar WhatsApp" onClose={onClose} busy={working}>
@@ -601,6 +628,56 @@ function ConnectModal({
               Listo
             </button>
           </div>
+        ) : mode === "manual" ? (
+          <>
+            <p style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5, margin: "0 0 12px" }}>
+              Ya verificaste el número en Meta. Pegá estos datos del portal y lo
+              conectamos (el token de System User <strong>no expira</strong>).
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <Labeled label="Phone number ID" hint="WhatsApp Manager → tu número → «Identificador del número de teléfono»">
+                <input
+                  value={m.phone_number_id}
+                  onChange={(e) => setM((s) => ({ ...s, phone_number_id: e.target.value }))}
+                  placeholder="123456789012345"
+                  style={inputStyle}
+                />
+              </Labeled>
+              <Labeled label="WhatsApp Business Account ID (WABA)" hint="WhatsApp Manager → la cuenta → ID. Necesario para recibir mensajes.">
+                <input
+                  value={m.waba_id}
+                  onChange={(e) => setM((s) => ({ ...s, waba_id: e.target.value }))}
+                  placeholder="109xxxxxxxxxxxx"
+                  style={inputStyle}
+                />
+              </Labeled>
+              <Labeled label="Token de System User" hint="Business Settings → Usuarios del sistema → Generar token → app «Zero by NavApex» + permisos whatsapp_business_messaging y whatsapp_business_management">
+                <input
+                  value={m.access_token}
+                  onChange={(e) => setM((s) => ({ ...s, access_token: e.target.value }))}
+                  placeholder="EAAG…"
+                  style={inputStyle}
+                />
+              </Labeled>
+            </div>
+            {error && <div style={{ ...errorStyle, marginTop: 12, marginBottom: 0 }}>{error}</div>}
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button type="button" onClick={() => setMode("auto")} disabled={working} style={ghostBtn}>
+                Volver
+              </button>
+              <button
+                type="button"
+                onClick={() => manualMut.mutate()}
+                disabled={working || !m.phone_number_id.trim() || !m.access_token.trim()}
+                style={{
+                  ...primaryBtn,
+                  opacity: !m.phone_number_id.trim() || !m.access_token.trim() ? 0.5 : 1,
+                }}
+              >
+                {manualMut.isPending ? <Spin /> : <CheckCircle2 size={13} />} Conectar
+              </button>
+            </div>
+          </>
         ) : (
           <>
             <p style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5, margin: "0 0 14px" }}>
@@ -626,10 +703,47 @@ function ConnectModal({
               {working && <Spin />}
               {connectMut.isPending ? "Conectando…" : busy ? "Esperando a Meta…" : "Conectar con Facebook"}
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                setMode("manual");
+              }}
+              style={{
+                marginTop: 12,
+                background: "none",
+                border: "none",
+                color: "var(--z-cyan)",
+                fontSize: 12,
+                cursor: "pointer",
+                textDecoration: "underline",
+                padding: 0,
+              }}
+            >
+              ¿Ya lo verificaste en Meta a mano? Conectalo manual →
+            </button>
           </>
         )}
       </div>
     </ModalShell>
+  );
+}
+
+function Labeled({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-1)" }}>{label}</span>
+      {children}
+      <span style={{ fontSize: 10.5, color: "var(--text-3)", lineHeight: 1.4 }}>{hint}</span>
+    </label>
   );
 }
 

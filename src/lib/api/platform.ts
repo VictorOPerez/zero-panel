@@ -248,6 +248,24 @@ export async function connectPoolWhatsapp(
   return res.number;
 }
 
+// Conexión MANUAL: el número ya se verificó en Meta a mano; pegamos el
+// phone_number_id + un token de System User (no expira).
+export async function connectPoolWhatsappManual(
+  id: string,
+  body: {
+    phone_number_id: string;
+    access_token: string;
+    waba_id?: string;
+    business_id?: string;
+  }
+): Promise<PoolNumber> {
+  const res = await api.post<{ number: PoolNumber }>(
+    `/api/admin/platform/number-pool/${encodeURIComponent(id)}/connect-manual`,
+    body
+  );
+  return res.number;
+}
+
 // Devuelve un número asignado al pool (lo desconecta del tenant).
 export async function reclaimPoolNumber(id: string): Promise<PoolNumber> {
   const res = await api.post<{ number: PoolNumber }>(
