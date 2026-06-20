@@ -329,7 +329,17 @@ function SwipeDeck({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      style={{ overflow: "hidden", touchAction: "pan-y", position: "relative" }}
+      style={{
+        overflow: "hidden",
+        touchAction: "pan-y",
+        position: "relative",
+        // Arrastrar para deslizar/scrollear no debe seleccionar el texto de la
+        // grilla (el header no lo sufre porque son <button>). Los inputs del
+        // modal/sheet viven fuera del deck → no se ven afectados.
+        userSelect: "none",
+        WebkitUserSelect: "none",
+        WebkitTouchCallout: "none",
+      }}
     >
       <div
         key={epoch}
