@@ -245,6 +245,12 @@
 .filter-tabs::-webkit-scrollbar { display: none; }
 .filter-tabs > button { flex-shrink: 0; }
 
+/* En móvil las columnas del calendario son angostas: el iconito del bot tapa
+   el inicio del nombre de la reserva → se oculta sólo en móvil (en PC queda). */
+@media (max-width: 640px) {
+  .cal-bot-spark { display: none !important; }
+}
+
 /* ── Calendar status + event rows — stacks on mobile ── */
 .calendar-status-row {
   display: flex;

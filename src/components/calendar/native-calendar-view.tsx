@@ -319,21 +319,30 @@ function SwipeDeck({
     }
     const dx = e.clientX - g.x;
     const dy = e.clientY - g.y;
-    // Guard: si el gesto terminó siendo mayormente vertical (scroll con leve
-    // deriva), NO navegar — sólo vuelve a su lugar. Cierra el bug de "siempre
-    // avanza al scrollear" en Semana/Día.
+    // Solo navega si el gesto fue dominante horizontal (no un scroll diagonal).
     if (Math.abs(dx) <= Math.abs(dy)) {
       settle(0);
       return;
     }
     const W = widthRef.current || 1;
     const dt = Math.max(1, e.timeStamp - g.t);
-    const vx = dx / dt; // px por ms
-    const threshold = Math.min(W * 0.25, 120);
-    const flick = Math.abs(vx) > 0.5 && Math.abs(dx) > 40;
-    if (dx <= -threshold || (flick && dx < 0)) settle(1);
-    else if (dx >= threshold || (flick && dx > 0)) settle(-1);
-    else settle(0);
+    const fastFlick = Math.abs(dx / dt) > 0.5 && Math.abs(dx) > 40;
+    const passed = Math.abs(dx) > Math.min(W * 0.25, 120) || fastFlick;
+    if (!passed) {
+      settle(0);
+      return;
+    }
+    // Dirección INEQUÍVOCA por el signo: arrastrar a la izquierda (dx<0) avanza
+    // (siguiente); a la derecha (dx>0) retrocede (anterior). Una sola decisión.
+    settle(dx < 0 ? 1 : -1);
+  };
+
+  // pointercancel = el navegador se llevó el gesto (p.ej. empezó a scrollear).
+  // NUNCA navega — sólo vuelve a su lugar. Antes compartía handler con pointerup
+  // y podía disparar una navegación con coordenadas a medio gesto.
+  const onPointerCancel = () => {
+    gesture.current = null;
+    settle(0);
   };
 
   return (
@@ -342,10 +351,11 @@ function SwipeDeck({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerCancel={onPointerCancel}
       style={{
         overflow: "hidden",
         touchAction: "pan-y",
+        overscrollBehaviorX: "contain",
         position: "relative",
         // Arrastrar para deslizar/scrollear no debe seleccionar el texto de la
         // grilla (el header no lo sufre porque son <button>). Los inputs del
@@ -682,7 +692,7 @@ function EventBlock({
           flexShrink: 0,
         }}
       >
-        {isBot && <Sparkles size={9} />}
+        {isBot && <Sparkles size={9} className="cal-bot-spark" style={{ flexShrink: 0 }} />}
         {event.summary || "(sin título)"}
       </span>
       {start && !compact && (
@@ -1429,7 +1439,15 @@ function splitEvents(events: CalendarLiveEvent[]): {
     const d = new Date(ev.start_at);
     if (Number.isNaN(d.getTime())) continue;
     const key = localDayKey(d);
-    if (ev.is_all_day) {
+    // "Todo el día" = flag explícito O un evento que abarca ~24h o más (p.ej.
+    // un "Día libre" del calendario personal guardado como timed de 00→00). Si
+    // se dejaran en la grilla se verían como barras de altura completa.
+    const end = ev.end_at ? new Date(ev.end_at) : null;
+    const spansFullDay =
+      !!end &&
+      !Number.isNaN(end.getTime()) &&
+      end.getTime() - d.getTime() >= DAY_MINUTES * 60_000 - 60_000;
+    if (ev.is_all_day || spansFullDay) {
       hasAllDay = true;
       push(allDayByDay, key, ev);
     } else {
