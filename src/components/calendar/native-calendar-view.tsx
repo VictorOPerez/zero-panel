@@ -294,8 +294,14 @@ function SwipeDeck({
     const dx = e.clientX - g.x;
     const dy = e.clientY - g.y;
     if (g.locked === null) {
-      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; // todavía un tap
-      g.locked = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
+      const adx = Math.abs(dx);
+      const ady = Math.abs(dy);
+      // Umbral más alto (14px) → el navegador alcanza a "ganar" el scroll
+      // vertical (touch-action: pan-y) y nos manda pointercancel ANTES de que
+      // bloqueemos como horizontal. Sólo bloqueamos 'h' si es claramente más
+      // horizontal que vertical (margen 1.3×) para no robar scrolls diagonales.
+      if (adx < 14 && ady < 14) return; // todavía un tap
+      g.locked = adx > ady * 1.3 ? "h" : "v";
       if (g.locked === "h") {
         setDragging(true);
         e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -312,11 +318,19 @@ function SwipeDeck({
       return;
     }
     const dx = e.clientX - g.x;
+    const dy = e.clientY - g.y;
+    // Guard: si el gesto terminó siendo mayormente vertical (scroll con leve
+    // deriva), NO navegar — sólo vuelve a su lugar. Cierra el bug de "siempre
+    // avanza al scrollear" en Semana/Día.
+    if (Math.abs(dx) <= Math.abs(dy)) {
+      settle(0);
+      return;
+    }
     const W = widthRef.current || 1;
     const dt = Math.max(1, e.timeStamp - g.t);
     const vx = dx / dt; // px por ms
     const threshold = Math.min(W * 0.25, 120);
-    const flick = Math.abs(vx) > 0.5 && Math.abs(dx) > 30;
+    const flick = Math.abs(vx) > 0.5 && Math.abs(dx) > 40;
     if (dx <= -threshold || (flick && dx < 0)) settle(1);
     else if (dx >= threshold || (flick && dx > 0)) settle(-1);
     else settle(0);
@@ -411,6 +425,9 @@ function TimeGrid({
           minHeight: 440,
           overflowY: "auto",
           position: "relative",
+          // El scroll vertical lo maneja el navegador; el swipe horizontal queda
+          // para el deck (evita que el inner scroll se pelee con el gesto).
+          touchAction: "pan-y",
         }}
       >
         <div style={{ position: "sticky", top: 0, zIndex: 6, background: "var(--bg-1)" }}>
@@ -700,7 +717,7 @@ function MonthGrid({
 
   return (
     <div className="glass" style={{ borderRadius: 14, overflow: "hidden" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid var(--hair)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", borderBottom: "1px solid var(--hair)" }}>
         {weekdays.map((d) => (
           <div
             key={d.toISOString()}
@@ -716,7 +733,7 @@ function MonthGrid({
           </div>
         ))}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
         {cells.map((d, i) => {
           const key = localDayKey(d);
           const dayEvents = (byDay.get(key) ?? []).sort(sortByStart);
@@ -730,6 +747,7 @@ function MonthGrid({
               }}
               style={{
                 minHeight: 124,
+                minWidth: 0, // permite que la celda encoja dentro de minmax(0,1fr)
                 padding: 6,
                 borderRight: (i + 1) % 7 === 0 ? undefined : "1px solid var(--hair)",
                 borderBottom: i < 35 ? "1px solid var(--hair)" : undefined,
